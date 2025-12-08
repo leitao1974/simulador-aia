@@ -5,14 +5,15 @@ from datetime import timedelta, date
 import holidays
 import io
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Simulador AIA + Jurídico", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="Calculadora Data Limite DIA", page_icon="🎯", layout="wide")
 
-st.title("⚖️ Simulador AIA & Fundamentação Jurídica")
+st.title("🎯 Calculadora da Data Limite da DIA")
 st.markdown("""
-Gera o cronograma técnico e a **Memória Justificativa** com base no RJAIA e no Código do Procedimento Administrativo (CPA).
+Esta ferramenta foca-se em determinar com precisão a **Data Limite Legal** para a emissão da Declaração de Impacte Ambiental,
+contabilizando o efeito das suspensões (tempo do promotor) sobre o prazo administrativo (dias úteis).
 """)
 
 # --- FUNÇÕES DE DATAS ---
@@ -39,111 +40,56 @@ def somar_dias_uteis(data_inicio, dias_a_adicionar, lista_feriados):
             dias_adicionados += 1
     return data_atual
 
+# --- DADOS RJAIA ---
+REGRAS = {
+    "Anexo I (100 dias úteis)": {"prazo": 100, "conf": 10, "cp": 30},
+    "Anexo II (75 dias úteis)": {"prazo": 75, "conf": 10, "cp": 30},
+    "AIncA (60 dias úteis)":    {"prazo": 60, "conf": 10, "cp": 20}
+}
+
 # --- GERADOR DE RELATÓRIO WORD ---
-def gerar_relatorio_word(cronograma, nome_projeto, regras, dias_suspensao):
+def gerar_relatorio_word(cronograma, nome_projeto, regras, dias_suspensao, data_limite_final):
     doc = Document()
     
-    # Título
     style = doc.styles['Title']
     style.font.size = Pt(16)
-    doc.add_heading(f'Memória Justificativa de Prazos: {nome_projeto}', 0)
+    doc.add_heading(f'Cálculo da Data Limite da DIA: {nome_projeto}', 0)
     
-    doc.add_paragraph(f"Data de Emissão: {datetime.date.today().strftime('%d/%m/%Y')}")
-    doc.add_paragraph("Este documento fundamenta legalmente a contagem de prazos para o procedimento de AIA, considerando o Decreto-Lei n.º 151-B/2013 (RJAIA) na sua redação atual e o Código do Procedimento Administrativo (CPA).")
+    doc.add_paragraph(f"Data de Emissão do Relatório: {datetime.date.today().strftime('%d/%m/%Y')}")
     
-    doc.add_heading("Enquadramento Legal Geral", level=1)
+    # Destaque da Data Limite
+    p = doc.add_paragraph()
+    run = p.add_run(f"DATA LIMITE CALCULADA: {data_limite_final}")
+    run.bold = True
+    run.font.size = Pt(14)
+    run.font.color.rgb = RGBColor(255, 0, 0) # Vermelho
+    
+    doc.add_heading("Enquadramento Jurídico", level=1)
     doc.add_paragraph(
-        "Nos termos do Artigo 87.º do CPA e do DL n.º 11/2023, os prazos administrativos contam-se em dias úteis. "
-        "A contagem suspende-se nos Sábados, Domingos e Feriados. "
-        "Quando o prazo terminaria num dia não útil, transfere-se para o primeiro dia útil seguinte."
+        "O presente cronograma visa determinar o termo do prazo para a decisão final de AIA, "
+        "nos termos do Decreto-Lei n.º 151-B/2013 (RJAIA) e do Decreto-Lei n.º 11/2023 (Simplex Ambiental)."
     )
 
-    doc.add_heading("Detalhamento das Etapas", level=1)
+    doc.add_heading("Cronograma Detalhado", level=1)
 
     for item in cronograma:
-        # Título da Fase
         data_fmt = item['Data Estimada'].strftime('%d/%m/%Y')
-        p = doc.add_heading(f"{item['Fase']} - {data_fmt}", level=2)
-        
-        # Descrição e Duração
+        p = doc.add_heading(f"{data_fmt} - {item['Fase']}", level=2)
         doc.add_paragraph(f"Descrição: {item['Descrição']}")
-        doc.add_paragraph(f"Duração considerada: {item['Duração']}")
+        doc.add_paragraph(f"Contagem: {item['Duração']}")
         
-        # Fundamentação Jurídica Dinâmica
-        fundamentacao = ""
-        fase_nome = item['Fase']
-
-        if "Entrada" in fase_nome:
-            fundamentacao = (
-                "Termo inicial (dies a quo): A submissão marca o início do procedimento. "
-                "Nos termos do Art. 88.º do CPA, a contagem do prazo administrativo inicia-se no dia útil seguinte."
-            )
-        
-        elif "Conformidade" in fase_nome:
-            fundamentacao = (
-                "Base Legal: Artigo 13.º do RJAIA. A autoridade de AIA dispõe deste prazo para verificar a conformidade liminar do Estudo de Impacte Ambiental. "
-                "A ausência de pronúncia neste prazo implica deferimento tácito da conformidade (Simplex Ambiental)."
-            )
-
-        elif "Consulta Pública" in fase_nome:
-            fundamentacao = (
-                "Base Legal: Artigo 15.º e 15.º-A do RJAIA. O período de consulta pública não pode ser inferior a 30 dias úteis (Anexo I e II). "
-                "Inclui-se aqui o prazo procedimental de publicitação dos avisos."
-            )
-
-        elif "Análise I" in fase_nome:
-            fundamentacao = (
-                "Base Legal: Artigo 16.º do RJAIA. A Autoridade de AIA pode solicitar elementos adicionais (AI) numa única vez. "
-                "Este pedido suspende o prazo de decisão da administração nos termos do CPA."
-            )
-
-        elif "Aditamentos" in fase_nome:
-            fundamentacao = (
-                "Regime de Suspensão: Durante este período, a contagem do prazo da administração encontra-se suspensa. "
-                "O prazo aqui indicado corresponde ao tempo estimado pelo Promotor para resposta, contando-se em dias corridos (calendário civil), "
-                "pois trata-se de um prazo para a prática de atos pelo interessado."
-            )
-
-        elif "Análise II" in fase_nome:
-            fundamentacao = (
-                "Base Legal: Artigo 16.º e 17.º do RJAIA. Após receção dos aditamentos, retoma-se a contagem do prazo administrativo para avaliação técnica final."
-            )
-
-        elif "Audiência Prévia" in fase_nome:
-            fundamentacao = (
-                "Base Legal: Artigos 121.º e 122.º do CPA. Antes da decisão final, o promotor tem direito a ser ouvido. "
-                "O prazo mínimo legal é de 10 dias úteis. Este período suspende novamente a contagem do prazo decisório da Autoridade."
-            )
-        
-        elif "Decisão Final" in fase_nome:
-            artigo_prazo = "18.º (Anexo II)" if regras['prazo'] == 75 else "19.º (Anexo I)"
-            fundamentacao = (
-                f"Base Legal: Artigo {artigo_prazo} do RJAIA. A Declaração de Impacte Ambiental (DIA) deve ser emitida até ao termo deste prazo. "
-                "O incumprimento pode gerar deferimento tácito do licenciamento principal, mas não da avaliação ambiental em si (Art. 23.º DL 11/2023)."
-            )
-
-        if fundamentacao:
-            p_fund = doc.add_paragraph()
-            runner = p_fund.add_run("Fundamentação: ")
-            runner.bold = True
-            p_fund.add_run(fundamentacao)
+        if item['Responsável'] == "PROMOTOR":
+            doc.add_paragraph("Nota: Período de suspensão do prazo administrativo.").italic = True
             
-        doc.add_paragraph("-" * 30) # Separador
-
     return doc
 
-# --- LÓGICA DE CÁLCULO (WRAPPER PARA EVITAR ERRO NONLOCAL) ---
-def calcular_cronograma_completo(data_inicio, regras, dias_suspensao, feriados):
-    """
-    Função encapsulada para calcular o cronograma.
-    Resolve o erro 'SyntaxError: no binding for nonlocal'.
-    """
+# --- FUNÇÃO DE CÁLCULO ---
+def calcular_cronograma(data_inicio, regras, dias_suspensao, feriados):
     cronograma = []
     data_atual = data_inicio
     dias_admin = 0
     prazo_max = regras['prazo']
 
-    # Função interna agora funciona corretamente porque está dentro de outra função
     def add_line(fase, resp, desc, dias_fase, tipo="UTIL", obs=""):
         nonlocal data_atual, dias_admin
         
@@ -165,52 +111,109 @@ def calcular_cronograma_completo(data_inicio, regras, dias_suspensao, feriados):
             data_fim = data_atual + timedelta(days=dias_fase)
             data_atual = proximo_dia_util(data_fim, feriados)
 
-    # --- EXECUÇÃO DAS FASES ---
-    add_line("0. Entrada do Processo", "Promotor", "Submissão SILiAmb", 0)
+    # --- FLUXO PADRÃO ---
+    add_line("0. Entrada", "Promotor", "Submissão SILiAmb", 0)
     add_line("1. Conformidade", "Autoridade", "Verificação Liminar", regras['conf'])
     add_line("2. Consulta Pública", "Autoridade", "Publicitação e Consulta", regras['cp'] + 5)
-    add_line("3. Análise I (Pedido AI)", "Comissão", "Análise Pós-CP", 10)
-    add_line("4. Aditamentos (Suspensão)", "PROMOTOR", "Resposta aos Pedidos", dias_suspensao, tipo="CORRIDO")
-    add_line("5. Análise II (Técnica)", "Comissão", "Avaliação Final", 20)
+    add_line("3. Análise Pós-CP", "Comissão", "Análise e Pedido AI", 10)
+    add_line("4. Suspensão (Aditamentos)", "PROMOTOR", "Resposta do Promotor", dias_suspensao, tipo="CORRIDO")
+    add_line("5. Avaliação Técnica", "Comissão", "Avaliação Final", 20)
     add_line("6. Audiência Prévia", "PROMOTOR", "Pronúncia CPA", 10, tipo="UTIL")
     
+    # CÁLCULO FINAL DA DATA LIMITE
     dias_restantes = prazo_max - dias_admin
     if dias_restantes < 0: dias_restantes = 0
     
-    add_line("7. Decisão Final (DIA)", "Autoridade", "Emissão da Decisão", dias_restantes)
+    add_line("7. TERMO DO PRAZO (DATA LIMITE)", "Autoridade", "Emissão da DIA", dias_restantes)
     
-    return cronograma
-
-# --- DADOS RJAIA ---
-REGRAS = {
-    "Anexo I (100 dias úteis)": {"prazo": 100, "conf": 10, "cp": 30},
-    "Anexo II (75 dias úteis)": {"prazo": 75, "conf": 10, "cp": 30},
-    "AIncA (60 dias úteis)":    {"prazo": 60, "conf": 10, "cp": 20}
-}
+    return cronograma, data_atual
 
 # ==============================================================================
 # INTERFACE
 # ==============================================================================
+
 with st.sidebar:
-    st.header("1. Configuração")
+    st.header("1. Definições")
     data_entrada = st.date_input("Data de Entrada", value=date.today())
     
     st.header("2. Projeto")
     nome_projeto = st.text_input("Nome", "Projeto Solar X")
-    tipo_input = st.selectbox("Tipo", list(REGRAS.keys()))
+    tipo_input = st.selectbox("Tipo de AIA", list(REGRAS.keys()))
     regras_escolhidas = REGRAS[tipo_input]
 
-    st.header("3. Promotor")
-    dias_suspensao = st.number_input("Dias para Aditamentos (Corridos)", value=60)
+    st.header("3. Suspensões")
+    dias_suspensao = st.number_input("Dias de Resposta (Promotor)", value=45, help="Dias de calendário que a sua equipa demora a responder aos pedidos.")
 
 # ==============================================================================
-# MOTOR PRINCIPAL
+# MOTOR
 # ==============================================================================
-
-# 1. Preparar Feriados
-anos = [data_entrada.year, data_entrada.year + 1, data_entrada.year + 2]
+anos = [data_entrada.year, data_entrada.year + 1, data_entrada.year + 2, data_entrada.year + 3]
 feriados = obter_feriados_pt(anos)
 
-# 2. Verificar data inicial
 if not eh_dia_util(data_entrada, feriados):
     data_inicio_contagem = proximo_dia_util(data_entrada, feriados)
+    st.warning(f"⚠️ Entrada em dia não útil. Contagem inicia a: {data_inicio_contagem.strftime('%d/%m/%Y')}")
+else:
+    data_inicio_contagem = data_entrada
+
+if st.button("Calcular Data Limite", type="primary"):
+    
+    # 1. Calcular Cenário REAL (Com suspensões)
+    cronograma_real, data_limite_real = calcular_cronograma(data_inicio_contagem, regras_escolhidas, dias_suspensao, feriados)
+    
+    # 2. Calcular Cenário IDEAL (Sem suspensões / Zero dias do promotor)
+    #    Para mostrar ao cliente "qual seria a data se nós fôssemos instantâneos"
+    cronograma_ideal, data_limite_ideal = calcular_cronograma(data_inicio_contagem, regras_escolhidas, 0, feriados)
+
+    # --- RESULTADOS EM DESTAQUE ---
+    
+    st.divider()
+    
+    # Layout de Métricas
+    c1, c2, c3 = st.columns(3)
+    
+    c1.metric(
+        label="DATA LIMITE (REAL)", 
+        value=data_limite_real.strftime("%d/%m/%Y"), 
+        delta="Data Final Provável",
+        delta_color="inverse" # Preto/Normal
+    )
+    
+    c2.metric(
+        label="DATA LIMITE (TEÓRICA)", 
+        value=data_limite_ideal.strftime("%d/%m/%Y"),
+        delta="Sem suspensões",
+        delta_color="off"
+    )
+    
+    atraso = (data_limite_real - data_limite_ideal).days
+    c3.metric(
+        label="Impacto das Suspensões", 
+        value=f"{atraso} dias",
+        delta="Tempo de calendário adicionado",
+        delta_color="inverse"
+    )
+    
+    # Barra de Progresso Visual
+    st.write("")
+    st.info(f"ℹ️ **Nota Legal:** Esta data ({data_limite_real.strftime('%d/%m/%Y')}) corresponde ao dia em que se esgotam os **{regras_escolhidas['prazo']} dias úteis** da Administração. O incumprimento deste prazo pela Autoridade de AIA pode desencadear mecanismos de deferimento tácito no licenciamento conexo (Simplex).")
+
+    # Tabela
+    df = pd.DataFrame(cronograma_real)
+    df_show = df.copy()
+    df_show['Data Estimada'] = df_show['Data Estimada'].apply(lambda x: x.strftime("%d/%m/%Y"))
+    
+    # Destacar a última linha visualmente (via Pandas Styler)
+    def highlight_last(s):
+        return ['background-color: #ffcccc' if i == len(df_show)-1 else '' for i in range(len(s))]
+
+    st.table(df_show.style.apply(highlight_last, axis=0))
+
+    # --- EXPORTAÇÃO ---
+    # Word
+    doc = gerar_relatorio_word(cronograma_real, nome_projeto, regras_escolhidas, dias_suspensao, data_limite_real.strftime("%d/%m/%Y"))
+    buffer_word = io.BytesIO()
+    doc.save(buffer_word)
+    buffer_word.seek(0)
+    
+    st.download_button("📄 Baixar Relatório da Data Limite (.docx)", buffer_word, f"Data_Limite_{nome_projeto}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
