@@ -105,7 +105,17 @@ def gerar_relatorio_ccdr(df_dados, data_fim, prazo_max, saldo, fig_timeline):
     except:
         doc.add_paragraph("[Gráfico indisponível. Verifique biblioteca 'kaleido']")
 
-    # 4. Tabela
+    # 4. Tabela (LINHA CORRIGIDA ABAIXO)
     doc.add_page_break()
-    doc.add_heading('4. Detalhe das Etapas', level=1
+    doc.add_heading('4. Detalhe das Etapas', level=1)
+    
+    table = doc.add_table(rows=1, cols=4)
+    table.style = 'Table Grid'
+    hdr = table.rows[0].cells
+    hdr[0].text = 'Fase'
+    hdr[1].text = 'Duração'
+    hdr[2].text = 'Início'
+    hdr[3].text = 'Fim'
+
+    for _, row in df_dados.iterrows():
 
