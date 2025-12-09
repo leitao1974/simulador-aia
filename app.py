@@ -7,7 +7,7 @@ import io
 
 # --- CONFIGURAÇÃO DA PÁGINA (TEM DE SER A PRIMEIRA LINHA) ---
 st.set_page_config(
-    page_title="Analista EIA - Cronograma RJAIA",
+    page_title="Simulador de prazos do procedimento AIA",
     page_icon="🌿",
     layout="wide"
 )
@@ -284,14 +284,14 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
 
     pdf.ln(10)
     pdf.set_font("Arial", "I", 8)
-    note = "Nota: Documento gerado pela ferramenta 'Analista EIA'. Prazos calculados com base em dias úteis e suspensões inseridas."
+    note = "Nota: Documento gerado pela ferramenta 'Simulador de prazos do procedimento AIA'. Prazos calculados com base em dias úteis."
     pdf.multi_cell(0, 5, note.encode('latin-1', 'replace').decode('latin-1'))
 
     return pdf.output(dest='S').encode('latin-1')
 
 # --- INTERFACE PRINCIPAL ---
 
-st.title("🌿 Analista EIA - Gestão de Prazos (Simplex)")
+st.title("🌿 Simulador de prazos do procedimento AIA")
 
 # Verificação de segurança da biblioteca
 if FPDF is None:
