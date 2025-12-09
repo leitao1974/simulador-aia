@@ -29,7 +29,7 @@ def somar_dias_uteis(data_inicio, dias, feriados):
 def formatar_data(np_date):
     return pd.to_datetime(np_date).strftime("%d/%m/%Y")
 
-# --- 3. GERADOR DE WORD (COM GRÁFICO) ---
+# --- 3. GERADOR DE WORD (CORRIGIDO) ---
 def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline):
     doc = Document()
     
@@ -50,26 +50,38 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     p = doc.add_paragraph(texto_legal)
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    # 2. Resumo Executivo
+    # 2. Resumo Executivo (CORREÇÃO AQUI)
     doc.add_heading('2. Resumo de Prazos', level=1)
-    doc.add_paragraph(f'Data Limite da Decisão (DIA): {data_fim}', style='Strong')
+    
+    # Criamos o parágrafo e aplicamos negrito manualmente ao "run" (texto)
+    p = doc.add_paragraph()
+    run = p.add_run(f'Data Limite da Decisão (DIA): {data_fim}')
+    run.bold = True  # Isto substitui o style='Strong' que dava erro
+    
     doc.add_paragraph(f'Prazo Legal Total: {prazo_max} dias úteis')
+    
     if saldo >= 0:
         doc.add_paragraph(f'Saldo Disponível: {saldo} dias úteis')
     else:
-        doc.add_paragraph(f'DERRAPAGEM: {abs(saldo)} dias acima do prazo.')
+        # Texto de alerta em vermelho e negrito
+        p_alert = doc.add_paragraph()
+        r_alert = p_alert.add_run(f'DERRAPAGEM: {abs(saldo)} dias acima do prazo.')
+        r_alert.bold = True
+        r_alert.font.color.rgb = None # Usar cor padrão ou definir RGB se necessário
 
     # 3. Infograma (Linha do Tempo)
     doc.add_heading('3. Linha do Tempo Visual', level=1)
     try:
         # Converter o gráfico Plotly em imagem PNG
         img_buffer = BytesIO()
+        # Nota: O Streamlit Cloud precisa da biblioteca 'kaleido' instalada
         fig_timeline.write_image(img_buffer, format='png', width=800, height=400)
         img_buffer.seek(0)
         doc.add_picture(img_buffer, width=Inches(6.5))
     except Exception as e:
-        doc.add_paragraph(f"[Aviso: Não foi possível gerar a imagem do gráfico no servidor: {e}]")
-        doc.add_paragraph("Certifique-se que a biblioteca 'kaleido' está instalada no requirements.txt.")
+        doc.add_paragraph("[Aviso: O gráfico não pôde ser gerado nesta versão do documento.]")
+        doc.add_paragraph(f"Erro técnico: {e}")
+        doc.add_paragraph("Nota: Verifique se 'kaleido' está no requirements.txt")
 
     # 4. Tabela Detalhada
     doc.add_page_break() # Tabela numa nova página
@@ -143,9 +155,6 @@ for nome, duracao, tipo in etapas:
     cursor = fim
     dias_gastos += duracao
 
-# Inserir suspensão se existir (exemplo: após a análise técnica, apenas para demo visual)
-# Para ser rigoroso, a suspensão devia ser inserida onde o utilizador escolhesse, 
-# mas aqui adicionamos ao final para simplificar a visualização do impacto.
 if susp_uteis > 0:
     inicio_susp = cursor
     fim_susp_np = somar_dias_uteis(inicio_susp, susp_uteis, feriados_np)
