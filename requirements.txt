@@ -2,5 +2,3 @@ streamlit
 pandas
 numpy
 plotly
-python-docx
-kaleido==0.2.1
