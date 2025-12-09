@@ -186,9 +186,12 @@ for i, susp in enumerate(st.session_state.suspensions):
 fig = px.timeline(df_gantt, x_start="Start", x_end="Finish", y="Task", color="Resource", title=f"Timeline: {proj_name}")
 fig.update_yaxes(autorange="reversed") # Tarefas de cima para baixo
 
-# --- CORREÇÃO DO ERRO ANTERIOR AQUI ---
-# Adicionar linha de hoje (Convertida para Timestamp para evitar erro no Python 3.13 + Plotly)
-fig.add_vline(x=pd.Timestamp(today), line_width=2, line_dash="dash", line_color="red", annotation_text="Hoje")
+# --- CORREÇÃO DO ERRO ---
+# Convertemos a data para um número (milissegundos) para que o Plotly consiga fazer a média matemática
+# sem tentar somar objetos Data com Inteiros.
+today_as_float = pd.Timestamp(today).timestamp() * 1000 
+
+fig.add_vline(x=today_as_float, line_width=2, line_dash="dash", line_color="red", annotation_text="Hoje")
 
 st.plotly_chart(fig, use_container_width=True)
 
