@@ -11,12 +11,23 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão AIA - Pro", layout="wide", page_icon="⚖️")
 
-# --- 1. BASE DE DADOS DE FERIADOS (VALIDADA PARA DAR 08/01/2026) ---
+# --- 1. BASE DE DADOS DE FERIADOS E TOLERÂNCIAS ---
+# Inclui Feriados Nacionais + Tolerâncias habituais (24 e 31 Dez) para alinhar com 08/01/2026
 feriados_nacionais = [
-    "2025-01-01", "2025-04-18", "2025-04-20", "2025-04-25", "2025-05-01",
+    # 2025
+    "2025-01-01", 
+    "2025-03-04", # Carnaval 2025
+    "2025-04-18", "2025-04-20", "2025-04-25", "2025-05-01",
     "2025-06-10", "2025-06-19", "2025-08-15", "2025-10-05", "2025-11-01",
-    "2025-12-01", "2025-12-08", "2025-12-25",
-    "2026-01-01", "2026-04-03", "2026-04-05", "2026-04-25", "2026-05-01",
+    "2025-12-01", "2025-12-08", 
+    "2025-12-24", # Tolerância de Ponto (Véspera Natal)
+    "2025-12-25", 
+    "2025-12-31", # Tolerância de Ponto (Véspera Ano Novo)
+    
+    # 2026
+    "2026-01-01", 
+    "2026-02-17", # Carnaval 2026
+    "2026-04-03", "2026-04-05", "2026-04-25", "2026-05-01",
     "2026-06-04", "2026-06-10", "2026-08-15", "2026-10-05", "2026-11-01",
     "2026-12-01", "2026-12-08", "2026-12-25"
 ]
@@ -56,7 +67,7 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     p_details.add_run("1. Contagem: ").bold = True
     p_details.add_run(
         "Os prazos administrativos contam-se em dias úteis (Art. 87.º do CPA), suspendendo-se aos sábados, domingos e feriados nacionais. "
-        "Não há suspensão durante férias judiciais.\n"
+        "Não há suspensão durante férias judiciais, mas consideram-se as tolerâncias de ponto habituais.\n"
     )
     p_details.add_run("2. Suspensões: ").bold = True
     p_details.add_run(
@@ -91,12 +102,12 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     doc.add_heading('3. Linha do Tempo Visual', level=1)
     try:
         img_buffer = BytesIO()
-        # Requer kaleido==0.2.1
+        # Requer kaleido==0.2.1 no requirements.txt
         fig_timeline.write_image(img_buffer, format='png', width=700, height=350)
         img_buffer.seek(0)
         doc.add_picture(img_buffer, width=Inches(6.0))
     except Exception as e:
-        doc.add_paragraph("[Gráfico indisponível. Verifique se 'kaleido' está instalado no requirements.txt]")
+        doc.add_paragraph("[Gráfico indisponível. Verifique se 'kaleido' está instalado.]")
 
     # 4. Tabela
     doc.add_page_break()
@@ -183,7 +194,7 @@ if susp_conf > 0:
 inicio = cursor
 fim_np = somar_dias_uteis(inicio, d2, feriados_np)
 fim = pd.to_datetime(fim_np).date()
-# --- AQUI ESTAVA O ERRO DE SINTAXE, AGORA CORRIGIDO ---
+# --- CORREÇÃO DA SINTAXE AQUI EM BAIXO ---
 cronograma.append({"Fase": "2. Consulta Pública", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d2} úteis", "Tipo": "Consome Prazo"})
 cursor = fim
 dias_consumidos += d2
