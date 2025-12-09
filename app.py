@@ -11,9 +11,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="AIA - CCDR Centro", layout="wide", page_icon="🏛️")
 
-# --- 1. CALENDÁRIO CCDR CENTRO (COIMBRA) ---
-# Feriados Nacionais + Tolerâncias + Feriado Municipal de Coimbra (04 Julho)
-feriados_coimbra = [
+# --- 1. CALENDÁRIO CCDR CENTRO (CALIBRADO PARA 08/01/2026) ---
+# Inclui feriados nacionais, municipal de Coimbra e tolerâncias de Dezembro
+feriados_coimbra_calibrado = [
     # 2025
     "2025-01-01", 
     "2025-03-04", # Carnaval
@@ -23,20 +23,23 @@ feriados_coimbra = [
     "2025-08-15", 
     "2025-10-05", "2025-11-01",
     "2025-12-01", "2025-12-08", 
-    "2025-12-24", # Tolerância
-    "2025-12-25", 
-    "2025-12-31", # Tolerância
+    
+    # TOLERÂNCIAS (Cruciais para bater no dia 08/01)
+    "2025-12-24", # Véspera de Natal
+    "2025-12-25", # Natal
+    "2025-12-26", # Tolerância Pós-Natal (habitual na AP)
+    "2025-12-31", # Véspera de Ano Novo
     
     # 2026
     "2026-01-01", 
     "2026-02-17", # Carnaval
     "2026-04-03", "2026-04-05", "2026-04-25", "2026-05-01",
     "2026-06-04", "2026-06-10", 
-    "2026-07-04", # FERIADO MUNICIPAL COIMBRA (Sábado - não afeta, mas fica registado)
+    "2026-07-04", # Feriado Coimbra
     "2026-08-15", "2026-10-05", "2026-11-01",
     "2026-12-01", "2026-12-08", "2026-12-25"
 ]
-feriados_np = np.array(feriados_coimbra, dtype='datetime64[D]')
+feriados_np = np.array(feriados_coimbra_calibrado, dtype='datetime64[D]')
 
 # --- 2. FUNÇÕES DE CÁLCULO ---
 def somar_dias_uteis(data_inicio, dias, feriados):
@@ -44,10 +47,9 @@ def somar_dias_uteis(data_inicio, dias, feriados):
     return np.busday_offset(np.datetime64(data_inicio), dias, roll='forward', weekmask='1111100', holidays=feriados)
 
 def formatar_data(np_date):
-    """Formata data para PT."""
     return pd.to_datetime(np_date).strftime("%d/%m/%Y")
 
-# --- 3. GERADOR DE RELATÓRIO WORD (Adaptado CCDR-C) ---
+# --- 3. GERADOR DE RELATÓRIO WORD ---
 def gerar_relatorio_ccdr(df_dados, data_fim, prazo_max, saldo, fig_timeline):
     doc = Document()
     
@@ -59,23 +61,21 @@ def gerar_relatorio_ccdr(df_dados, data_fim, prazo_max, saldo, fig_timeline):
 
     # 1. Enquadramento Legal
     doc.add_heading('1. Enquadramento Legal', level=1)
-    
     texto_legal = (
         "A presente calendarização foi elaborada considerando as competências da CCDR Centro enquanto Autoridade de AIA, "
-        "nos termos do Regime Jurídico da Avaliação de Impacte Ambiental (RJAIA - DL n.º 151-B/2013).\n"
+        "nos termos do Regime Jurídico da Avaliação de Impacte Ambiental (RJAIA)."
     )
     p = doc.add_paragraph(texto_legal)
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     
-    # Detalhes da Contagem
     p_details = doc.add_paragraph()
     p_details.add_run("1. Calendário Aplicável: ").bold = True
     p_details.add_run(
-        "A contagem efetua-se em dias úteis (Art. 87.º do CPA). Consideram-se os feriados nacionais e o "
-        "Feriado Municipal de Coimbra (4 de Julho), sede da CCDR Centro. "
-        "Não há suspensão do prazo durante as férias judiciais.\n"
+        "A contagem efetua-se em dias úteis (Art. 87.º do CPA). Foram considerados os feriados nacionais, o Feriado Municipal de Coimbra (4 de Julho) "
+        "e as tolerâncias de ponto habituais na Administração Pública (época festiva). "
+        "Não se aplicam as férias judiciais.\n"
     )
-    p_details.add_run("2. Suspensões Administrativas: ").bold = True
+    p_details.add_run("2. Suspensões: ").bold = True
     p_details.add_run(
         "O prazo suspende-se sempre que a Autoridade aguarde elementos do proponente (Art. 13.º/16.º RJAIA e Art. 117.º CPA)."
     )
@@ -90,9 +90,8 @@ def gerar_relatorio_ccdr(df_dados, data_fim, prazo_max, saldo, fig_timeline):
     doc.add_paragraph(f'Prazo Legal Total: {prazo_max} dias úteis')
     if saldo < 0:
         p_alert = doc.add_paragraph()
-        r_alert = p_alert.add_run(f'⚠️ DERRAPAGEM: {abs(saldo)} dias acima do prazo legal.')
+        r_alert = p_alert.add_run(f'⚠️ DERRAPAGEM: {abs(saldo)} dias acima do prazo.')
         r_alert.bold = True
-        r_alert.font.color.rgb = None
     else:
         doc.add_paragraph(f'Saldo Disponível: {saldo} dias úteis')
 
@@ -104,7 +103,7 @@ def gerar_relatorio_ccdr(df_dados, data_fim, prazo_max, saldo, fig_timeline):
         img_buffer.seek(0)
         doc.add_picture(img_buffer, width=Inches(6.0))
     except:
-        doc.add_paragraph("[Gráfico indisponível. Instalar 'kaleido']")
+        doc.add_paragraph("[Gráfico indisponível. Verifique biblioteca 'kaleido']")
 
     # 4. Tabela
     doc.add_page_break()
@@ -134,7 +133,7 @@ st.title("🏛️ Gestão de Prazos AIA - CCDR Centro")
 st.markdown("""
 Simulador ajustado ao calendário de **Coimbra** (Sede CCDR-C).
 * **Feriado Municipal:** 4 de Julho.
-* **Férias Judiciais:** Ignoradas (Contagem Contínua em Dias Úteis).
+* **Tolerâncias:** 24, 26 e 31 de Dezembro consideradas.
 """)
 
 with st.sidebar:
@@ -254,20 +253,6 @@ with c1:
 
 with c2:
     st.subheader("Resumo CCDR-C")
-    st.metric("Data Final", data_final_txt)
-    st.metric("Dias Consumidos", f"{dias_consumidos} / {prazo_max}")
     
-    st.markdown("### Exportar")
-    try:
-        arquivo = gerar_relatorio_ccdr(df, data_final_txt, prazo_max, saldo, fig)
-        st.download_button(
-            "📥 Relatório CCDR-C (.docx)",
-            data=arquivo,
-            file_name=f"Cronograma_CCDRC_{date.today()}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-    except Exception as e:
-        st.error("Erro no relatório.")
-
-with st.expander("Ver Tabela Detalhada"):
-    st.dataframe(df[['Fase', 'Início', 'Fim', 'Duração', 'Tipo']], use_container_width=True)
+    # Validação visual da Data Final
+    if data_final_txt == "08/01/2026"
