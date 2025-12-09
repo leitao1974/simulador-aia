@@ -11,14 +11,31 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- DADOS DE FERIADOS (Extraídos do ficheiro enviado) ---
+FERIADOS_STR = [
+    '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25',
+    '2024-01-01', '2024-03-29', '2024-03-31', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10',
+    '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25',
+    '2025-01-01', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15',
+    '2025-12-01', '2025-12-08', '2025-12-25',
+    '2026-01-01', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10',
+    '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25'
+]
+# Converter para objetos date para comparação rápida
+FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
+
 # --- FUNÇÕES UTILITÁRIAS ---
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex)."""
-    return check_date.weekday() < 5
+    """Verifica se é dia útil (seg-sex) E não é feriado."""
+    if check_date.weekday() >= 5: # 5=Sábado, 6=Domingo
+        return False
+    if check_date in FERIADOS:
+        return False
+    return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis a uma data."""
+    """Adiciona dias úteis a uma data, saltando fins de semana e feriados."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -27,179 +44,170 @@ def add_business_days(start_date, num_days):
             added_days += 1
     return current_date
 
-def calculate_timeline(start_date, deadline_days, suspensions):
+def calculate_milestones(start_date, suspensions):
     """
-    Calcula a data final considerando suspensões.
+    Calcula as datas exatas para cada marco do processo de 150 dias.
     """
-    # 1. Calcular data final teórica sem suspensões
-    base_end_date = add_business_days(start_date, deadline_days)
-    
-    # 2. Calcular dias de suspensão
+    # 1. Calcular total de dias de suspensão (calendário)
     total_suspension_days = 0
-    suspension_details = []
-
     for susp in suspensions:
         s_start = susp['start']
         s_end = susp['end']
         if s_end >= s_start:
-            duration = (s_end - s_start).days + 1 # Inclui o próprio dia
+            duration = (s_end - s_start).days + 1
             total_suspension_days += duration
-            suspension_details.append((s_start, s_end, duration))
     
-    # A nova data final é a base + dias de suspensão
-    final_dia_date = base_end_date + timedelta(days=total_suspension_days)
+    # 2. Marcos definidos no Excel (Simplex 150 dias)
+    # A lógica: Data Limite = Data Inicio + Dias Úteis + Dias Suspensão
+    milestones_def = [
+        {"dias": 9,   "fase": "Data Reunião"},
+        {"dias": 30,  "fase": "Limite Conformidade"},
+        {"dias": 85,  "fase": "Envio PTF à AAIA"},
+        {"dias": 100, "fase": "Audiência de Interessados"},
+        {"dias": 150, "fase": "Emissão da DIA (Decisão Final)"}
+    ]
     
-    # Ajustar se cair em fim de semana
-    while not is_business_day(final_dia_date):
-        final_dia_date += timedelta(days=1)
+    results = []
+    # O dia 0 é a data de início
+    last_date = start_date
+    
+    for m in milestones_def:
+        # Data teórica (apenas dias úteis)
+        base_date = add_business_days(start_date, m["dias"])
         
-    return base_end_date, final_dia_date, total_suspension_days
+        # Adicionar suspensão (empurra o calendário para a frente)
+        final_date = base_date + timedelta(days=total_suspension_days)
+        
+        # Se cair num não-útil após a suspensão, ajusta para o próximo útil
+        while not is_business_day(final_date):
+            final_date += timedelta(days=1)
+            
+        results.append({
+            "Etapa": m["fase"],
+            "Dia do Processo": m["dias"],
+            "Data Prevista": final_date
+        })
+        
+    return results, total_suspension_days
 
 # --- INTERFACE PRINCIPAL ---
 
-st.title("🌿 Calculadora de Prazos RJAIA (Simplex) - CCDR Centro")
-st.markdown("""
-Esta ferramenta auxilia na contagem de prazos para a emissão da **Declaração de Impacte Ambiental (DIA)**, 
-considerando as competências da **CCDR Centro** e as alterações do **Decreto-Lei n.º 11/2023 (Simplex)**.
+st.title("🌿 Cronograma RJAIA - 150 Dias (Simplex)")
+st.markdown(f"""
+Configurado para **CCDR Centro** com base na análise do ficheiro Excel.
+* **Feriados incluídos**: {len(FERIADOS)} datas (2023-2026).
+* **Estrutura**: Procedimento Geral (150 dias úteis).
 """)
 
-st.warning("⚠️ **Nota:** Os prazos administrativos contam-se em **dias úteis** (CPA). As suspensões (ex: Pedido de Elementos Adicionais) param o relógio.")
-
-# --- SIDEBAR: DADOS DO PROJETO ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("📂 Dados do Processo")
-    proj_name = st.text_input("Nome do Projeto", "Projeto Exemplo")
-    start_date = st.date_input("Data de Submissão / Instrução", date.today())
+    proj_name = st.text_input("Nome do Projeto", "Ampliação Zona Industrial Condeixa")
+    start_date = st.date_input("Data de Instrução (Dia 0)", date.today())
     
     st.markdown("---")
-    st.subheader("⏱️ Regime de Prazo (Simplex)")
-    # Definição dos prazos conforme DL 11/2023
-    prazo_option = st.radio(
-        "Selecione o prazo legal aplicável:",
-        (90, 150),
-        format_func=lambda x: f"{x} dias úteis (AIA {'Simplificado/Outros' if x==90 else 'Geral/Complexo'})"
-    )
-    
-    st.markdown("---")
-    st.subheader("⏸️ Suspensões")
-    st.caption("Adicione períodos de 'Pedido de Elementos' ou outras suspensões legais.")
+    st.subheader("⏸️ Suspensões (PeA)")
     
     if 'suspensions' not in st.session_state:
         st.session_state.suspensions = []
 
     with st.form("add_suspension"):
         c1, c2 = st.columns(2)
-        s_start = c1.date_input("Início Suspensão")
-        s_end = c2.date_input("Fim Suspensão")
-        submitted = st.form_submit_button("Adicionar Suspensão")
-        
-        if submitted:
+        s_start = c1.date_input("Início")
+        s_end = c2.date_input("Fim")
+        if st.form_submit_button("Adicionar"):
             if s_end < s_start:
-                st.error("A data de fim deve ser posterior ao início.")
+                st.error("Data fim inválida.")
             else:
                 st.session_state.suspensions.append({'start': s_start, 'end': s_end})
-                st.success("Suspensão adicionada!")
+                st.success("Adicionado!")
+                st.rerun()
 
-    # Listar suspensões
     if st.session_state.suspensions:
-        st.write("Suspensões registadas:")
-        rem_list = []
+        st.write("Períodos de paragem:")
         for i, s in enumerate(st.session_state.suspensions):
-            col_text, col_btn = st.columns([0.8, 0.2])
-            col_text.text(f"{s['start']} a {s['end']}")
-            if col_btn.button("❌", key=f"del_{i}"):
-                rem_list.append(i)
-        
-        # Remover suspensões selecionadas
-        for i in sorted(rem_list, reverse=True):
-            del st.session_state.suspensions[i]
+            st.text(f"{i+1}. {s['start']} a {s['end']}")
+        if st.button("Limpar Suspensões"):
+            st.session_state.suspensions = []
             st.rerun()
 
 # --- CÁLCULOS ---
 
-base_deadline, final_deadline, total_suspension = calculate_timeline(
-    start_date, 
-    prazo_option, 
-    st.session_state.suspensions
-)
-
+milestones, total_susp = calculate_milestones(start_date, st.session_state.suspensions)
+final_dia_date = milestones[-1]["Data Prevista"]
 today = date.today()
-days_passed = np.busday_count(start_date, today) if today >= start_date else 0
-days_remaining = np.busday_count(today, final_deadline) if today < final_deadline else 0
 
-# --- DASHBOARD DE RESULTADOS ---
-
+# --- DASHBOARD ---
 st.divider()
+c1, c2, c3 = st.columns(3)
+c1.metric("Início do Processo", start_date.strftime("%d/%m/%Y"))
+c2.metric("Dias de Suspensão", f"{total_susp} dias", delta_color="inverse")
+c3.metric("Data Final (DIA)", final_dia_date.strftime("%d/%m/%Y"), 
+          delta=f"{(final_dia_date - today).days} dias restantes" if final_dia_date >= today else "Prazo Expirado")
 
-col1, col2, col3, col4 = st.columns(4)
+# --- TABELA DETALHADA ---
+st.subheader("📋 Tabela de Prazos Calculados")
+df_milestones = pd.DataFrame(milestones)
+# Formatar a data para ler melhor
+df_milestones["Data Prevista"] = df_milestones["Data Prevista"].apply(lambda x: x.strftime("%d-%m-%Y"))
+st.table(df_milestones)
 
-with col1:
-    st.metric("Prazo Legal Base", f"{prazo_option} dias úteis")
+# --- GRÁFICO GANTT ---
+st.subheader("📅 Linha Temporal")
 
-with col2:
-    st.metric("Total Suspensão", f"{total_suspension} dias", help="Dias de calendário que o processo esteve parado")
+# Criar dados para o Gantt (Intervalos entre marcos)
+gantt_data = []
+prev_date = start_date
 
-with col3:
-    st.metric("Data Limite (DIA)", final_deadline.strftime("%d/%m/%Y"), delta_color="inverse")
+for m in milestones:
+    curr_date = pd.to_datetime(m["Data Prevista"], dayfirst=True).date() # reconverter string se necessario ou usar o obj original
+    # Usar o objeto original é melhor, mas aqui vou reconstruir rapidinho para o plot
+    # A estrutura do loop acima já tinha a data correta. Vamos refazer o loop para o Gantt limpo.
+    pass
 
-with col4:
-    if today > final_deadline:
-        st.error(f"⚠️ Prazo Ultrapassado por {abs(days_remaining)} dias")
-    else:
-        st.metric("Dias Úteis Restantes", f"{days_remaining}", delta_color="normal")
+# Refazendo lista para Gantt com objetos de data
+gantt_list = []
+last_date = start_date
+for m in milestones:
+    # A data que está no dataframe já é string formatada, vamos pegar do calculo original
+    # Melhor: usar o dataframe mas converter de volta ou guardar lista original
+    pass
 
-# --- VISUALIZAÇÃO GANTT ---
+# Construção direta do Gantt
+df_gantt = []
+last_end = start_date
 
-st.subheader("📅 Cronograma Estimado")
+# Adicionar cada etapa como um bloco sequencial para visualização
+for item in milestones:
+    # Converter string de volta para date se necessário, ou pegar do loop anterior.
+    # Vou usar o dataframe que está na tela
+    end_date_dt = pd.to_datetime(item["Data Prevista"], format="%d-%m-%Y").date()
+    
+    df_gantt.append(dict(
+        Task=item["Etapa"], 
+        Start=last_end, 
+        Finish=end_date_dt, 
+        Resource="Fase Processual"
+    ))
+    last_end = end_date_dt # O fim de uma é o inicio visual da proxima
 
-# Preparar dados para o Gantt
-p_conformance = int(prazo_option * 0.10) # 10% Conformidade
-p_public = int(prazo_option * 0.30)      # 30% Consulta Pública
-p_eval = int(prazo_option * 0.40)        # 40% Avaliação Técnica
-p_decision = int(prazo_option * 0.20)    # 20% Decisão
-
-d1_start = start_date
-d1_end = add_business_days(d1_start, p_conformance)
-
-d2_start = d1_end
-d2_end = add_business_days(d2_start, p_public)
-
-d3_start = d2_end
-d3_end = add_business_days(d3_start, p_eval)
-
-d4_start = d3_end
-d4_end = final_deadline # Ajusta o último para bater certo com o cálculo final
-
-df_gantt = pd.DataFrame([
-    dict(Task="1. Verificação Conformidade", Start=d1_start, Finish=d1_end, Resource="CCDR Centro"),
-    dict(Task="2. Consulta Pública", Start=d2_start, Finish=d2_end, Resource="Público/CCDR"),
-    dict(Task="3. Avaliação Técnica", Start=d3_start, Finish=d3_end, Resource="Comissão de Avaliação"),
-    dict(Task="4. Emissão da DIA", Start=d4_start, Finish=d4_end, Resource="CCDR Centro (Decisão)"),
-])
-
-# Adicionar as suspensões ao gráfico visualmente
+# Adicionar suspensões visualmente
 for i, susp in enumerate(st.session_state.suspensions):
-    df_gantt = pd.concat([df_gantt, pd.DataFrame([
-        dict(Task=f"Suspensão {i+1}", Start=susp['start'], Finish=susp['end'], Resource="Promotor (PeA)")
-    ])], ignore_index=True)
+    df_gantt.append(dict(
+        Task=f"Suspensão {i+1}", 
+        Start=susp['start'], 
+        Finish=susp['end'], 
+        Resource="Suspensão"
+    ))
 
-fig = px.timeline(df_gantt, x_start="Start", x_end="Finish", y="Task", color="Resource", title=f"Timeline: {proj_name}")
-fig.update_yaxes(autorange="reversed") # Tarefas de cima para baixo
+df_g = pd.DataFrame(df_gantt)
 
-# --- CORREÇÃO DO ERRO ---
-# Convertemos a data para um número (milissegundos) para que o Plotly consiga fazer a média matemática
-# sem tentar somar objetos Data com Inteiros.
-today_as_float = pd.Timestamp(today).timestamp() * 1000 
+fig = px.timeline(df_g, x_start="Start", x_end="Finish", y="Task", color="Resource", 
+                  color_discrete_map={"Fase Processual": "#2E86C1", "Suspensão": "#E74C3C"})
+fig.update_yaxes(autorange="reversed")
 
-fig.add_vline(x=today_as_float, line_width=2, line_dash="dash", line_color="red", annotation_text="Hoje")
+# Linha de Hoje
+today_ts = pd.Timestamp(today).timestamp() * 1000
+fig.add_vline(x=today_ts, line_width=2, line_dash="dash", line_color="green", annotation_text="Hoje")
 
 st.plotly_chart(fig, use_container_width=True)
-
-# --- INFO LEGAL ---
-st.markdown("""
----
-### 🏛️ Enquadramento Legal
-* **Regime**: RJAIA (Decreto-Lei n.º 151-B/2013) atualizado pelo **Simplex Ambiental (DL n.º 11/2023)**.
-* **Autoridade de Avaliação**: CCDR Centro (nos casos delegados ou de competência própria).
-* **Deferimento Tácito**: Nos termos do Simplex, a ausência de decisão nos prazos máximos pode levar ao deferimento tácito, salvo exceções legais.
-""")
