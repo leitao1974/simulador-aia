@@ -11,7 +11,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão AIA - Pro", layout="wide", page_icon="⚖️")
 
-# --- 1. BASE DE DADOS DE FERIADOS (VALIDADA) ---
+# --- 1. BASE DE DADOS DE FERIADOS (VALIDADA PARA DAR 08/01/2026) ---
 feriados_nacionais = [
     "2025-01-01", "2025-04-18", "2025-04-20", "2025-04-25", "2025-05-01",
     "2025-06-10", "2025-06-19", "2025-08-15", "2025-10-05", "2025-11-01",
@@ -31,7 +31,7 @@ def formatar_data(np_date):
     """Formata data para PT."""
     return pd.to_datetime(np_date).strftime("%d/%m/%Y")
 
-# --- 3. GERADOR DE RELATÓRIO WORD (JURIDICAMENTE ATUALIZADO) ---
+# --- 3. GERADOR DE RELATÓRIO WORD ---
 def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline):
     doc = Document()
     
@@ -41,7 +41,7 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     doc.add_paragraph(f'Data de Emissão: {date.today().strftime("%d/%m/%Y")}')
     doc.add_paragraph('')
 
-    # 1. Enquadramento Legal (ATUALIZADO)
+    # 1. Enquadramento Legal
     doc.add_heading('1. Enquadramento Legal', level=1)
     
     texto_legal = (
@@ -64,7 +64,7 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
         "Esta suspensão fundamenta-se no "
     )
     p_details.add_run("Art. 13.º, n.º 4 do RJAIA ").bold = True
-    p_details.add_run("(fase de conformidade/aperfeiçoamento) e no ")
+    p_details.add_run("(fase de conformidade) e no ")
     p_details.add_run("Art. 16.º do RJAIA ").bold = True
     p_details.add_run("(fase de análise técnica), em articulação com o princípio geral do ")
     p_details.add_run("Art. 117.º, n.º 2 do CPA.").bold = True
@@ -87,16 +87,16 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
         r_alert.bold = True
         r_alert.font.color.rgb = None 
 
-    # 3. Infograma
+    # 3. Infograma (Linha do Tempo)
     doc.add_heading('3. Linha do Tempo Visual', level=1)
     try:
         img_buffer = BytesIO()
-        # Nota: Requer kaleido==0.2.1 no requirements.txt
-        fig_timeline.write_image(img_buffer, format='png', width=800, height=400)
+        # Requer kaleido==0.2.1
+        fig_timeline.write_image(img_buffer, format='png', width=700, height=350)
         img_buffer.seek(0)
-        doc.add_picture(img_buffer, width=Inches(6.5))
+        doc.add_picture(img_buffer, width=Inches(6.0))
     except Exception as e:
-        doc.add_paragraph("[Gráfico indisponível nesta versão. Verifique biblioteca 'kaleido']")
+        doc.add_paragraph("[Gráfico indisponível. Verifique se 'kaleido' está instalado no requirements.txt]")
 
     # 4. Tabela
     doc.add_page_break()
@@ -138,7 +138,7 @@ with st.sidebar:
     # FASE 1
     st.subheader("Fase 1: Conformidade")
     d1 = st.number_input("Duração (Dias Úteis)", 10, key="d1")
-    susp_conf = st.number_input("Suspensão / Aperfeiçoamento (Dias Corridos)", value=0, help="Art. 13º RJAIA: Convite ao aperfeiçoamento.", key="s1")
+    susp_conf = st.number_input("Suspensão / Aperfeiçoamento (Dias Corridos)", value=0, help="Art. 13º RJAIA.", key="s1")
     
     # FASE 2
     st.subheader("Fase 2: Consulta Pública")
@@ -147,24 +147,23 @@ with st.sidebar:
     # FASE 3
     st.subheader("Fase 3: Análise Técnica")
     d3 = st.number_input("Duração (Dias Úteis)", 60, key="d3")
-    susp_adit = st.number_input("Suspensão / Aditamentos (Dias Corridos)", value=45, help="Art. 16º RJAIA: Pedido de elementos adicionais.", key="s3")
+    susp_adit = st.number_input("Suspensão / Aditamentos (Dias Corridos)", value=45, help="Art. 16º RJAIA.", key="s3")
     
     # FASE 4
     st.subheader("Fase 4: Audiência Prévia")
     d4 = st.number_input("Duração (Dias Úteis)", 10, key="d4")
-    susp_aud = st.number_input("Suspensão da Contagem (Dias Úteis)", value=10, help="Art. 117º CPA: Suspensão para pronúncia.", key="s4")
+    susp_aud = st.number_input("Suspensão da Contagem (Dias Úteis)", value=10, help="Art. 117º CPA.", key="s4")
     
-    # FASE 5
+    # FASE 5 (Cálculo automático do restante)
     st.subheader("Fase 5: Decisão (DIA)")
-    dias_restantes_calc = prazo_max - (d1+d2+d3+d4)
+    dias_usados_antes_decisao = d1 + d2 + d3 + d4
+    dias_restantes_calc = max(0, prazo_max - dias_usados_antes_decisao)
     d5 = st.number_input("Duração Restante (Dias Úteis)", value=dias_restantes_calc, disabled=True)
 
 # --- 5. MOTOR DE CÁLCULO ---
 cronograma = []
 cursor = data_inicio
 dias_consumidos = 0
-
-# --- Lógica Passo a Passo ---
 
 # 1. CONFORMIDADE
 inicio = cursor
@@ -174,10 +173,9 @@ cronograma.append({"Fase": "1. Conformidade", "Início": formatar_data(inicio), 
 cursor = fim
 dias_consumidos += d1
 
-# Suspensão Conformidade (NOVO)
 if susp_conf > 0:
     inicio_susp = cursor
-    fim_susp = cursor + timedelta(days=susp_conf) # Dias Corridos
+    fim_susp = cursor + timedelta(days=susp_conf) # Dias corridos
     cronograma.append({"Fase": "⚠️ Aperfeiçoamento (Art. 13º)", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_conf} corridos", "Tipo": "Suspensão"})
     cursor = fim_susp
 
@@ -185,6 +183,7 @@ if susp_conf > 0:
 inicio = cursor
 fim_np = somar_dias_uteis(inicio, d2, feriados_np)
 fim = pd.to_datetime(fim_np).date()
+# --- AQUI ESTAVA O ERRO DE SINTAXE, AGORA CORRIGIDO ---
 cronograma.append({"Fase": "2. Consulta Pública", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d2} úteis", "Tipo": "Consome Prazo"})
 cursor = fim
 dias_consumidos += d2
@@ -197,15 +196,14 @@ cronograma.append({"Fase": "3. Análise Técnica", "Início": formatar_data(inic
 cursor = fim
 dias_consumidos += d3
 
-# Suspensão Aditamentos
 if susp_adit > 0:
     inicio_susp = cursor
-    fim_susp = cursor + timedelta(days=susp_adit) # Dias Corridos
+    fim_susp = cursor + timedelta(days=susp_adit) # Dias corridos
     cronograma.append({"Fase": "⏸️ Aditamentos (Art. 16º)", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_adit} corridos", "Tipo": "Suspensão"})
     cursor = fim_susp
 
 # 4. AUDIÊNCIA PRÉVIA
-# Ajuste: Se suspensão acabou ao FDS, começar em dia útil
+# Retoma em dia útil
 cursor_util = pd.to_datetime(somar_dias_uteis(cursor, 0, feriados_np)).date()
 inicio = cursor_util
 fim_np = somar_dias_uteis(inicio, d4, feriados_np)
@@ -214,12 +212,11 @@ cronograma.append({"Fase": "4. Audiência Prévia", "Início": formatar_data(ini
 cursor = fim
 dias_consumidos += d4
 
-# Suspensão Audiência (Dias Úteis - Art 117 CPA)
 if susp_aud > 0:
     inicio_susp = cursor
-    fim_susp_np = somar_dias_uteis(inicio_susp, susp_aud, feriados_np) # Dias Úteis
+    fim_susp_np = somar_dias_uteis(inicio_susp, susp_aud, feriados_np) # Dias Úteis (CPA)
     fim_susp = pd.to_datetime(fim_susp_np).date()
-    cronograma.append({"Fase": "⏸️ Análise Pronúncias (CPA)", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_aud} úteis", "Tipo": "Suspensão"})
+    cronograma.append({"Fase": "⏸️ Análise Pronúncias", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_aud} úteis", "Tipo": "Suspensão"})
     cursor = fim_susp
 
 # 5. DECISÃO FINAL (Saldo)
@@ -250,7 +247,7 @@ with col1:
         title=f"Previsão de Fim: {data_final_txt}"
     )
     fig.update_yaxes(autorange="reversed")
-    fig.update_layout(height=400)
+    fig.update_layout(height=400, showlegend=True)
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
@@ -261,7 +258,6 @@ with col2:
     st.write("---")
     st.write("📄 **Documentação**")
     
-    # Tratamento de erro caso kaleido falhe na primeira execução
     try:
         arquivo = gerar_relatorio_completo(df, data_final_txt, prazo_max, saldo, fig)
         st.download_button(
@@ -271,8 +267,8 @@ with col2:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
     except Exception as e:
-        st.error(f"Erro ao gerar relatório: {e}")
-        st.caption("Verifique se 'kaleido==0.2.1' está no requirements.txt")
+        st.error("Erro ao gerar relatório.")
+        st.caption(f"Detalhe: {e}")
 
 st.divider()
 with st.expander("Ver Tabela de Dados Completa"):
