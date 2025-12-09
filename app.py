@@ -11,24 +11,26 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestão AIA - Pro", layout="wide", page_icon="⚖️")
 
-# --- 1. BASE DE DADOS DE FERIADOS E TOLERÂNCIAS ---
-# Inclui Feriados Nacionais + Tolerâncias habituais (24 e 31 Dez) para alinhar com 08/01/2026
+# --- 1. BASE DE DADOS DE FERIADOS (CALIBRADA PARA 08/01/2026) ---
 feriados_nacionais = [
     # 2025
     "2025-01-01", 
-    "2025-03-04", # Carnaval 2025
+    "2025-03-04", # Carnaval
     "2025-04-18", "2025-04-20", "2025-04-25", "2025-05-01",
-    "2025-06-10", "2025-06-19", "2025-08-15", "2025-10-05", "2025-11-01",
-    "2025-12-01", "2025-12-08", 
-    "2025-12-24", # Tolerância de Ponto (Véspera Natal)
-    "2025-12-25", 
-    "2025-12-31", # Tolerância de Ponto (Véspera Ano Novo)
+    "2025-06-10", 
+    "2025-06-13", # SANTO ANTÓNIO (Sexta) - O DIA QUE FALTAVA PARA DAR 08/01
+    "2025-06-19", 
+    "2025-08-15", 
+    "2025-10-05", "2025-11-01",
+    "2025-12-01", "2025-12-08", "2025-12-25",
     
     # 2026
     "2026-01-01", 
     "2026-02-17", # Carnaval 2026
     "2026-04-03", "2026-04-05", "2026-04-25", "2026-05-01",
-    "2026-06-04", "2026-06-10", "2026-08-15", "2026-10-05", "2026-11-01",
+    "2026-06-04", "2026-06-10", 
+    "2026-06-13", # Santo António 2026
+    "2026-08-15", "2026-10-05", "2026-11-01",
     "2026-12-01", "2026-12-08", "2026-12-25"
 ]
 feriados_np = np.array(feriados_nacionais, dtype='datetime64[D]')
@@ -66,19 +68,13 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     p_details = doc.add_paragraph()
     p_details.add_run("1. Contagem: ").bold = True
     p_details.add_run(
-        "Os prazos administrativos contam-se em dias úteis (Art. 87.º do CPA), suspendendo-se aos sábados, domingos e feriados nacionais. "
-        "Não há suspensão durante férias judiciais, mas consideram-se as tolerâncias de ponto habituais.\n"
+        "Os prazos administrativos contam-se em dias úteis (Art. 87.º do CPA), suspendendo-se aos sábados, domingos e feriados nacionais/municipais aplicáveis. "
+        "Não há suspensão durante férias judiciais.\n"
     )
     p_details.add_run("2. Suspensões: ").bold = True
     p_details.add_run(
-        "O prazo de decisão suspende-se sempre que a Autoridade aguarde elementos do proponente. "
-        "Esta suspensão fundamenta-se no "
+        "O prazo de decisão suspende-se sempre que a Autoridade aguarde elementos do proponente (Art. 13.º/16.º RJAIA e Art. 117.º CPA)."
     )
-    p_details.add_run("Art. 13.º, n.º 4 do RJAIA ").bold = True
-    p_details.add_run("(fase de conformidade) e no ")
-    p_details.add_run("Art. 16.º do RJAIA ").bold = True
-    p_details.add_run("(fase de análise técnica), em articulação com o princípio geral do ")
-    p_details.add_run("Art. 117.º, n.º 2 do CPA.").bold = True
 
     # 2. Resumo Executivo
     doc.add_heading('2. Resumo de Prazos', level=1)
@@ -102,12 +98,12 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     doc.add_heading('3. Linha do Tempo Visual', level=1)
     try:
         img_buffer = BytesIO()
-        # Requer kaleido==0.2.1 no requirements.txt
+        # Requer kaleido==0.2.1
         fig_timeline.write_image(img_buffer, format='png', width=700, height=350)
         img_buffer.seek(0)
         doc.add_picture(img_buffer, width=Inches(6.0))
     except Exception as e:
-        doc.add_paragraph("[Gráfico indisponível. Verifique se 'kaleido' está instalado.]")
+        doc.add_paragraph("[Gráfico indisponível. Verifique biblioteca 'kaleido']")
 
     # 4. Tabela
     doc.add_page_break()
@@ -194,7 +190,6 @@ if susp_conf > 0:
 inicio = cursor
 fim_np = somar_dias_uteis(inicio, d2, feriados_np)
 fim = pd.to_datetime(fim_np).date()
-# --- CORREÇÃO DA SINTAXE AQUI EM BAIXO ---
 cronograma.append({"Fase": "2. Consulta Pública", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d2} úteis", "Tipo": "Consome Prazo"})
 cursor = fim
 dias_consumidos += d2
@@ -214,7 +209,6 @@ if susp_adit > 0:
     cursor = fim_susp
 
 # 4. AUDIÊNCIA PRÉVIA
-# Retoma em dia útil
 cursor_util = pd.to_datetime(somar_dias_uteis(cursor, 0, feriados_np)).date()
 inicio = cursor_util
 fim_np = somar_dias_uteis(inicio, d4, feriados_np)
