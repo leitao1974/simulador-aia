@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from datetime import date, timedelta
 import plotly.express as px
-import plotly.figure_factory as ff
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -15,8 +14,7 @@ st.set_page_config(
 # --- FUNÇÕES UTILITÁRIAS ---
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex). Não valida feriados móveis para simplificar, 
-    mas pode ser expandido com a biblioteca 'holidays'."""
+    """Verifica se é dia útil (seg-sex)."""
     return check_date.weekday() < 5
 
 def add_business_days(start_date, num_days):
@@ -36,8 +34,7 @@ def calculate_timeline(start_date, deadline_days, suspensions):
     # 1. Calcular data final teórica sem suspensões
     base_end_date = add_business_days(start_date, deadline_days)
     
-    # 2. Calcular dias de suspensão (em dias úteis ou corridos dependendo da interpretação, 
-    # aqui assumimos dias corridos que impactam o calendário, mas o prazo suspende-se).
+    # 2. Calcular dias de suspensão
     total_suspension_days = 0
     suspension_details = []
 
@@ -50,8 +47,6 @@ def calculate_timeline(start_date, deadline_days, suspensions):
             suspension_details.append((s_start, s_end, duration))
     
     # A nova data final é a base + dias de suspensão
-    # Nota: No RJAIA, a contagem do prazo suspende-se. 
-    # Logo, empurramos a data final pelo número de dias que o processo esteve parado.
     final_dia_date = base_end_date + timedelta(days=total_suspension_days)
     
     # Ajustar se cair em fim de semana
@@ -158,15 +153,11 @@ with col4:
 st.subheader("📅 Cronograma Estimado")
 
 # Preparar dados para o Gantt
-# Simplificação das etapas baseada em percentagens típicas do RJAIA
-# Nota: Estas são estimativas para visualização, pois os prazos internos variam.
 p_conformance = int(prazo_option * 0.10) # 10% Conformidade
 p_public = int(prazo_option * 0.30)      # 30% Consulta Pública
 p_eval = int(prazo_option * 0.40)        # 40% Avaliação Técnica
 p_decision = int(prazo_option * 0.20)    # 20% Decisão
 
-# Datas das etapas (sem considerar suspensões específicas em cada etapa para simplificar visualização geral, 
-# mas empurrando tudo pelo total de suspensão)
 d1_start = start_date
 d1_end = add_business_days(d1_start, p_conformance)
 
@@ -195,9 +186,9 @@ for i, susp in enumerate(st.session_state.suspensions):
 fig = px.timeline(df_gantt, x_start="Start", x_end="Finish", y="Task", color="Resource", title=f"Timeline: {proj_name}")
 fig.update_yaxes(autorange="reversed") # Tarefas de cima para baixo
 
-
-# Adicionar linha de hoje
-fig.add_vline(x=today, line_width=2, line_dash="dash", line_color="red", annotation_text="Hoje")
+# --- CORREÇÃO DO ERRO ANTERIOR AQUI ---
+# Adicionar linha de hoje (Convertida para Timestamp para evitar erro no Python 3.13 + Plotly)
+fig.add_vline(x=pd.Timestamp(today), line_width=2, line_dash="dash", line_color="red", annotation_text="Hoje")
 
 st.plotly_chart(fig, use_container_width=True)
 
