@@ -91,6 +91,7 @@ def gerar_relatorio_completo(df_dados, data_fim, prazo_max, saldo, fig_timeline)
     doc.add_heading('3. Linha do Tempo Visual', level=1)
     try:
         img_buffer = BytesIO()
+        # Nota: Requer kaleido==0.2.1 no requirements.txt
         fig_timeline.write_image(img_buffer, format='png', width=800, height=400)
         img_buffer.seek(0)
         doc.add_picture(img_buffer, width=Inches(6.5))
@@ -184,4 +185,95 @@ if susp_conf > 0:
 inicio = cursor
 fim_np = somar_dias_uteis(inicio, d2, feriados_np)
 fim = pd.to_datetime(fim_np).date()
-cronograma.append({"Fase": "2. Consulta Pública", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d2} úteis", "Tipo
+cronograma.append({"Fase": "2. Consulta Pública", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d2} úteis", "Tipo": "Consome Prazo"})
+cursor = fim
+dias_consumidos += d2
+
+# 3. ANÁLISE TÉCNICA
+inicio = cursor
+fim_np = somar_dias_uteis(inicio, d3, feriados_np)
+fim = pd.to_datetime(fim_np).date()
+cronograma.append({"Fase": "3. Análise Técnica", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d3} úteis", "Tipo": "Consome Prazo"})
+cursor = fim
+dias_consumidos += d3
+
+# Suspensão Aditamentos
+if susp_adit > 0:
+    inicio_susp = cursor
+    fim_susp = cursor + timedelta(days=susp_adit) # Dias Corridos
+    cronograma.append({"Fase": "⏸️ Aditamentos (Art. 16º)", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_adit} corridos", "Tipo": "Suspensão"})
+    cursor = fim_susp
+
+# 4. AUDIÊNCIA PRÉVIA
+# Ajuste: Se suspensão acabou ao FDS, começar em dia útil
+cursor_util = pd.to_datetime(somar_dias_uteis(cursor, 0, feriados_np)).date()
+inicio = cursor_util
+fim_np = somar_dias_uteis(inicio, d4, feriados_np)
+fim = pd.to_datetime(fim_np).date()
+cronograma.append({"Fase": "4. Audiência Prévia", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{d4} úteis", "Tipo": "Consome Prazo"})
+cursor = fim
+dias_consumidos += d4
+
+# Suspensão Audiência (Dias Úteis - Art 117 CPA)
+if susp_aud > 0:
+    inicio_susp = cursor
+    fim_susp_np = somar_dias_uteis(inicio_susp, susp_aud, feriados_np) # Dias Úteis
+    fim_susp = pd.to_datetime(fim_susp_np).date()
+    cronograma.append({"Fase": "⏸️ Análise Pronúncias (CPA)", "Início": formatar_data(inicio_susp), "Fim": formatar_data(fim_susp), "Start": inicio_susp, "Finish": fim_susp, "Duração": f"{susp_aud} úteis", "Tipo": "Suspensão"})
+    cursor = fim_susp
+
+# 5. DECISÃO FINAL (Saldo)
+dias_finais = prazo_max - dias_consumidos
+if dias_finais > 0:
+    inicio = cursor
+    fim_np = somar_dias_uteis(inicio, dias_finais, feriados_np)
+    fim = pd.to_datetime(fim_np).date()
+    cronograma.append({"Fase": "5. Emissão da DIA", "Início": formatar_data(inicio), "Fim": formatar_data(fim), "Start": inicio, "Finish": fim, "Duração": f"{dias_finais} úteis", "Tipo": "Consome Prazo"})
+    cursor = fim
+    dias_consumidos += dias_finais
+
+df = pd.DataFrame(cronograma)
+data_final_txt = formatar_data(cursor)
+saldo = prazo_max - dias_consumidos
+
+# --- 6. VISUALIZAÇÃO ---
+st.divider()
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("Linha do Tempo (Gantt)")
+    fig = px.timeline(
+        df, x_start="Start", x_end="Finish", y="Fase", color="Tipo",
+        color_discrete_map={"Consome Prazo": "#2E86C1", "Suspensão": "#E74C3C"},
+        hover_data=["Duração"],
+        title=f"Previsão de Fim: {data_final_txt}"
+    )
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    st.subheader("Resumo Oficial")
+    st.metric("Data Final (DIA)", data_final_txt)
+    st.metric("Dias Consumidos", f"{dias_consumidos} / {prazo_max}")
+    
+    st.write("---")
+    st.write("📄 **Documentação**")
+    
+    # Tratamento de erro caso kaleido falhe na primeira execução
+    try:
+        arquivo = gerar_relatorio_completo(df, data_final_txt, prazo_max, saldo, fig)
+        st.download_button(
+            "📥 Baixar Relatório (.docx)",
+            data=arquivo,
+            file_name=f"Cronograma_AIA_{date.today()}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar relatório: {e}")
+        st.caption("Verifique se 'kaleido==0.2.1' está no requirements.txt")
+
+st.divider()
+with st.expander("Ver Tabela de Dados Completa"):
+    st.dataframe(df[['Fase', 'Início', 'Fim', 'Duração', 'Tipo']], use_container_width=True)
