@@ -20,7 +20,7 @@ except ImportError:
 # 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
 # ==========================================
 
-# Feriados (Lista completa baseada no seu Excel)
+# Feriados (Lista completa extraída do seu ficheiro Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -33,7 +33,7 @@ FERIADOS_STR = [
 ]
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
-# Legislação
+# Legislação Transversal
 COMMON_LAWS = {
     "RJAIA (DL 151-B/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-116043164",
     "REDE NATURA (DL 140/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34460975",
@@ -41,6 +41,7 @@ COMMON_LAWS = {
     "AGUA (Lei 58/2005)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2005-34563267"
 }
 
+# Legislação Específica
 SPECIFIC_LAWS = {
     "1. Agricultura, Silvicultura e Aquicultura": {
         "ATIVIDADE PECUARIA (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34480678",
@@ -99,11 +100,13 @@ TIPOLOGIAS_INFO = {
 # ==========================================
 
 def is_business_day(check_date):
+    """Verifica se é dia útil (seg-sex) E não é feriado."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
+    """Adiciona dias úteis a uma data (Simples)."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -113,45 +116,69 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
+    """Verifica se data está em suspensão (Intervalo Fechado)."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
-def is_business_day_rigorous(check_date, suspensions):
-    # Ordem: Suspensão > Fim de Semana > Feriado
-    if is_suspended(check_date, suspensions): return False
-    if check_date.weekday() >= 5: return False
-    if check_date in FERIADOS: return False
-    return True
-
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
+    """
+    Conta dias úteis um a um.
+    """
     current_date = start_date
     days_counted = 0
     log = []
     
+    # Se pedido log, adicionar a data inicial
+    if return_log:
+        log.append({
+            "Data": current_date, 
+            "Dia Contado": 0, 
+            "Status": "Inicio",
+            "Fim de Semana": current_date.weekday() >= 5,
+            "Feriado": current_date in FERIADOS,
+            "Suspenso": is_suspended(current_date, suspensions)
+        })
+
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
-        status = "Util"
         
-        if is_suspended(current_date, suspensions):
+        # Determinar status do dia
+        status = "Util"
+        is_susp = is_suspended(current_date, suspensions)
+        is_weekend = current_date.weekday() >= 5
+        is_holiday = current_date in FERIADOS
+        
+        if is_susp:
             status = "Suspenso"
-        elif current_date.weekday() >= 5:
+        elif is_weekend:
             status = "Fim de Semana"
-        elif current_date in FERIADOS:
+        elif is_holiday:
             status = "Feriado"
             
         if status == "Util":
             days_counted += 1
             
         if return_log:
-            log.append({"Data": current_date, "Dia Contado": days_counted if status == "Util" else "-", "Status": status})
+            log.append({
+                "Data": current_date, 
+                "Dia Contado": days_counted if status == "Util" else "-", 
+                "Status": status,
+                "Fim de Semana": is_weekend,
+                "Feriado": is_holiday,
+                "Suspenso": is_susp
+            })
             
     final_date = current_date
+    
+    # Ajuste CPA (Se cair em não-útil APÓS a contagem, avança)
     if adjust_weekend:
         while final_date.weekday() >= 5 or final_date in FERIADOS:
              final_date += timedelta(days=1)
-             
+             if return_log:
+                 log.append({"Data": final_date, "Dia Contado": "Ajuste CPA", "Status": "Ajuste Legal"})
+                 
     if return_log:
         return final_date, log
     return final_date
@@ -165,16 +192,16 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
-    log_30 = [] # Para guardar o log da conformidade
+    log_dia = [] 
     
     for m in milestones_def:
         if m["manual"] and manual_meeting_date:
             final_date = manual_meeting_date
             display = "Manual"
         else:
-            if m["dias"] == 30: # Captura log para o dia 30
+            if m["dias"] == 150: # Captura log para o final
                 final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
-                log_30 = log_data
+                log_dia = log_data
             else:
                 final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
             display = f"{m['dias']} dias úteis"
@@ -182,7 +209,7 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    return results, total_susp, log_30
+    return results, total_susp, log_dia
 
 # ==========================================
 # 3. PDF
@@ -252,6 +279,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     pdf.set_font("Arial", "", 10)
 
+    # Linha Entrada
     pdf.cell(90, 8, "Entrada do Processo / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
@@ -307,7 +335,7 @@ with st.sidebar:
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
-        # DATAS CALIBRADAS PARA O RESULTADO DO EXCEL (20/03/2026)
+        # CALIBRAÇÃO: DATAS QUE GERAM O RESULTADO DO SEU EXCEL (20/03/2026 para Conf.)
         s_s = c1.date_input("Início", date(2025, 12, 16))
         s_e = c2.date_input("Fim", date(2026, 2, 27))
         if st.form_submit_button("Adicionar"):
@@ -325,7 +353,7 @@ with st.sidebar:
 # ==========================================
 # 5. EXECUÇÃO
 # ==========================================
-milestones, total_susp, log_30 = calculate_all_milestones(
+milestones, total_susp, log_dia = calculate_all_milestones(
     start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
 )
 final_date = milestones[-1]["Data Prevista"]
@@ -335,8 +363,8 @@ st.divider()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Início", start_date.strftime("%d/%m/%Y"))
 c2.metric("Suspensões", f"{total_susp} dias")
-c3.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"))
-c4.metric("Limite DIA", final_date.strftime("%d/%m/%Y"))
+c3.metric("Conformidade (30d)", conformity_date.strftime("%d/%m/%Y"), delta="Verifique Auditoria")
+c4.metric("Limite DIA (150d)", final_date.strftime("%d/%m/%Y"))
 
 tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela", "📅 Cronograma", "📚 Legislação", "🔍 Auditoria"])
 
@@ -369,9 +397,9 @@ with tab3:
         st.markdown(f"- [{k}]({v})")
 
 with tab4:
-    st.markdown("### Auditoria de Contagem (Conformidade - 30 Dias)")
-    st.write("Verifique dia-a-dia como o sistema contou os 30 dias úteis.")
-    df_log = pd.DataFrame(log_30)
+    st.markdown("### Auditoria de Contagem Diária (150 Dias)")
+    st.write("Esta tabela mostra exatamente como o simulador contou cada dia útil até ao final do prazo (DIA).")
+    df_log = pd.DataFrame(log_dia)
     df_log["Data"] = pd.to_datetime(df_log["Data"]).dt.strftime("%d-%m-%Y")
     st.dataframe(df_log, use_container_width=True)
 
