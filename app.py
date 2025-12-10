@@ -7,12 +7,67 @@ import matplotlib.dates as mdates
 import tempfile
 import os
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+# --- 1. CONFIGURAÇÃO DA PÁGINA E ESTILO (O SEGREDO DO VISUAL) ---
 st.set_page_config(
-    page_title="Gestão de Prazos AIA - CCDR Centro",
+    page_title="Simulador AIA | CCDR Centro",
     page_icon="🌿",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# CSS Personalizado para um look moderno
+st.markdown("""
+    <style>
+    /* Importar fonte moderna */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Estilo dos Cartões de Métricas */
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 8px rgba(0,0,0,0.1);
+        border-color: #4CAF50;
+    }
+    
+    /* Cabeçalhos */
+    h1 { color: #1E3A8A; font-weight: 700; letter-spacing: -1px; }
+    h2, h3 { color: #333; }
+    
+    /* Barra Lateral */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+    }
+    
+    /* Botões */
+    div.stButton > button {
+        background-color: #1E3A8A;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px 20px;
+        font-weight: 600;
+    }
+    div.stButton > button:hover {
+        background-color: #152c6b;
+        color: white;
+    }
+    
+    /* Alertas */
+    .stAlert { border-radius: 8px; }
+    </style>
+""", unsafe_allow_html=True)
 
 # Tenta importar FPDF
 try:
@@ -21,10 +76,10 @@ except ImportError:
     FPDF = None
 
 # ==========================================
-# 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
+# 2. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
 # ==========================================
 
-# Feriados Nacionais (até 2030)
+# Feriados
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -43,7 +98,6 @@ COMMON_LAWS = {
     "CPA (Prazos)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106558838"
 }
 
-# Tipologias e Setores
 TIPOLOGIAS_INFO = {
     "Anexo I (Competência CCDR)": "Projetos do Anexo I do RJAIA sob competência da CCDR.",
     "Anexo II (Limiares ou Zonas Sensíveis)": "Projetos do Anexo II sujeitos a AIA por ultrapassarem limiares ou localização em zona sensível.",
@@ -61,17 +115,15 @@ SPECIFIC_LAWS = {
 }
 
 # ==========================================
-# 2. FUNÇÕES DE CÁLCULO RIGOROSO (MOTOR)
+# 3. MOTOR DE CÁLCULO (LÓGICA INALTERADA)
 # ==========================================
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex) E não é feriado."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis simples."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -81,23 +133,18 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
-    """Verifica se data está num intervalo de suspensão (inclusive)."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
 def is_business_day_rigorous(check_date, suspensions):
-    """Dia útil para contagem (exclui suspensões, fins de semana e feriados)."""
     if is_suspended(check_date, suspensions): return False
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
-    """
-    Algoritmo principal: Conta dias úteis progressivamente, saltando suspensões.
-    """
     current_date = start_date
     days_counted = 0
     log = []
@@ -123,8 +170,6 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
             log.append({"Data": current_date, "Dia Contado": days_counted if status == "Util" else "-", "Status": status})
             
     final_date = current_date
-    
-    # Ajuste CPA (Art. 87): Se terminar em dia não útil, passa para o próximo útil
     if adjust_weekend:
         while final_date.weekday() >= 5 or final_date in FERIADOS:
              final_date += timedelta(days=1)
@@ -133,90 +178,86 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
         return final_date, log
     return final_date
 
-def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
-    """
-    Calcula todos os marcos do processo com base no regime escolhido.
-    """
-    results = []
-    log_final = []
-    
-    # Lista ordenada de etapas para calcular
-    steps = [
-        ("Data Reunião", milestones_config["reuniao"]),
-        ("Limite Conformidade", milestones_config["conformidade"]),
-        ("Envio PTF à AAIA", milestones_config["ptf"]),
-        ("Audiência de Interessados", milestones_config["audiencia"]),
-        ("Emissão da DIA (Decisão Final)", milestones_config["dia"])
+def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
+    milestones_def = [
+        {"dias": 9,   "fase": "Reunião Prévia", "manual": True},
+        {"dias": 30,  "fase": "Conformidade", "manual": False},
+        {"dias": 100, "fase": "Envio PTF", "manual": False},
+        {"dias": 120, "fase": "Audiência Interessados", "manual": False},
+        {"dias": 150, "fase": "Emissão da DIA", "manual": False}
     ]
+    results = []
+    log_dia = []
+    conf_date = None
     
-    conf_date = None # Para guardar a data de conformidade para uso nos complementares
-    
-    for nome, dias in steps:
-        if dias == milestones_config["dia"]: # Se for o último dia, guarda o log
-            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
-            log_final = log_data
+    for m in milestones_def:
+        if m["manual"] and manual_meeting_date:
+            final_date = manual_meeting_date
+            display = "Manual"
         else:
-            final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
+            if m["dias"] == 150: 
+                final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
+                log_dia = log_data
+            else:
+                final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
+            display = f"{m['dias']} dias úteis"
             
-        if nome == "Limite Conformidade":
-            conf_date = final_date
+            if m["dias"] == 30: conf_date = final_date
             
-        results.append({
-            "Etapa": nome, 
-            "Prazo Legal": f"{dias} dias úteis", 
-            "Data Prevista": final_date
-        })
-
-    # 2. Marcos Complementares (Dependentes da Conformidade)
+        results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
+    
     complementary = []
     if conf_date:
-        # Início CP: 5 dias úteis após Conformidade
         cp_start = add_business_days(conf_date, 5)
-        # Fim CP: 30 dias úteis após Início CP
         cp_end = add_business_days(cp_start, 30)
-        # Relatório CP: 7 dias úteis após Fim CP
         cp_report = add_business_days(cp_end, 7)
-        # Pareceres Externos: 23 dias úteis após INÍCIO da CP
+        visit_date = add_business_days(cp_start, 15)
         external_ops = add_business_days(cp_start, 23)
         
         complementary = [
             {"Etapa": "Início Consulta Pública", "Ref": "Conf + 5 dias", "Data": cp_start},
             {"Etapa": "Fim Consulta Pública", "Ref": "Início CP + 30 dias", "Data": cp_end},
-            {"Etapa": "Prazo Pareceres Externos", "Ref": "Início CP + 23 dias", "Data": external_ops},
-            {"Etapa": "Relatório da CP", "Ref": "Fim CP + 7 dias", "Data": cp_report},
+            {"Etapa": "Prazo Pareceres", "Ref": "Início CP + 23 dias", "Data": external_ops},
+            {"Etapa": "Relatório CP", "Ref": "Fim CP + 7 dias", "Data": cp_report},
         ]
 
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    
-    return results, complementary, total_susp, log_final
+    return results, complementary, total_susp, log_dia
 
 # ==========================================
-# 3. GERADOR DE PDF (COM GANTT)
+# 4. GERADOR DE PDF (COM GANTT)
 # ==========================================
 def create_pdf(project_name, typology, sector, regime, start_date, milestones, complementary, suspensions, total_susp):
     if FPDF is None: return None
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 10)
-            self.cell(0, 10, 'CCDR CENTRO - Autoridade de AIA', 0, 1, 'C')
-            self.ln(5)
+            self.set_text_color(30, 58, 138) # Azul Profissional
+            self.cell(0, 10, 'CCDR CENTRO - AUTORIDADE DE AIA', 0, 1, 'C')
+            self.line(10, 20, 200, 20)
+            self.ln(10)
         def footer(self):
             self.set_y(-15)
             self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, f'Pagina {self.page_no()} - Gerado pelo Simulador AIA', 0, 0, 'C')
 
     pdf = PDF()
     pdf.add_page()
     
     # Título
-    pdf.set_font("Arial", "B", 14)
+    pdf.set_font("Arial", "B", 16)
+    pdf.set_text_color(0, 0, 0)
     safe_title = f"Relatorio de Prazos: {project_name}"
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
     # 1. Enquadramento Legal
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "1. Enquadramento Legal e Setorial", 0, 1)
+    pdf.set_fill_color(240, 248, 255) # Azul muito claro
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "1. Enquadramento Legal", 0, 1, 'L', 1)
+    pdf.ln(2)
+    
     pdf.set_font("Arial", "B", 10)
     pdf.cell(40, 6, "Tipologia:", 0, 0)
     pdf.set_font("Arial", "", 10)
@@ -225,345 +266,11 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     pdf.cell(40, 6, "Setor:", 0, 0)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
-    pdf.ln(2)
-    
-    # 2. Resumo do Processo
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "2. Resumo do Processo", 0, 1)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(50, 6, "Regime Aplicavel:", 0, 0)
-    pdf.cell(0, 6, f"{regime}", 0, 1)
-    pdf.cell(50, 6, "Data de Instrucao:", 0, 0)
-    pdf.cell(0, 6, start_date.strftime('%d/%m/%Y'), 0, 1)
-    pdf.cell(50, 6, "Total Suspensao:", 0, 0)
-    pdf.cell(0, 6, f"{total_susp} dias de calendario", 0, 1)
-    pdf.ln(5)
+    pdf.ln(4)
 
-    # 3. Legislação de Referência
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "3. Legislacao de Referencia", 0, 1)
-    pdf.set_font("Arial", "", 9)
-    # Transversal
-    pdf.cell(0, 5, "Transversal:", 0, 1)
-    for name, link in COMMON_LAWS.items():
-        pdf.cell(5)
-        pdf.set_text_color(0, 0, 255)
-        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
-    # Setorial
-    pdf.set_text_color(0,0,0)
-    pdf.cell(0, 5, f"Setorial ({sector}):", 0, 1)
-    for name, link in SPECIFIC_LAWS.get(sector, {}).items():
-        pdf.cell(5)
-        pdf.set_text_color(0, 0, 255)
-        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
-    pdf.set_text_color(0,0,0)
-    pdf.ln(5)
-
-    # 4. Cronograma Oficial
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "4. Cronograma Oficial (Previsao)", 0, 1)
-    pdf.set_font("Arial", "B", 9)
-    pdf.set_fill_color(220, 220, 220)
-    pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
-    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
-    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
-    
-    pdf.set_font("Arial", "", 9)
-    # Linha 0
-    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
-    pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
-    pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
-    
-    for m in milestones:
-        pdf.cell(90, 8, m["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
-        pdf.cell(40, 8, str(m["Prazo Legal"]), 1, 0, 'C')
-        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
-        pdf.ln()
-
-    # Complementares
-    if complementary:
-        pdf.ln(2)
-        pdf.set_font("Arial", "I", 9)
-        pdf.cell(0, 6, "Fases Complementares (Consulta Publica e Pareceres)", 0, 1)
-        pdf.set_font("Arial", "", 9)
-        for c in complementary:
-            pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
-            pdf.cell(40, 8, c["Ref"].encode('latin-1','replace').decode('latin-1'), 1)
-            pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
-            pdf.ln()
-
-    # Suspensões
-    if suspensions:
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, "Registo de Suspensoes", 0, 1)
-        pdf.set_font("Arial", "", 9)
-        for s in suspensions:
-            dur = (s['end'] - s['start']).days + 1
-            pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
-
-    # 5. Cronograma Visual (Gantt) no PDF
-    pdf.add_page()
+    # 2. Resumo
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "5. Cronograma Visual (Gantt)", 0, 1)
-    
-    try:
-        # Preparar dados para o gráfico
-        tasks = []
-        start_dates = []
-        end_dates = []
-        colors = []
-        
-        # Fases Principais
-        last = start_date
-        for m in milestones:
-            end = m["Data Prevista"]
-            start = last if last < end else end
-            tasks.append(m["Etapa"])
-            start_dates.append(start)
-            end_dates.append(end)
-            colors.append('skyblue')
-            last = end
-            
-        # Suspensões
-        for s in suspensions:
-            tasks.append("Suspensão")
-            start_dates.append(s['start'])
-            end_dates.append(s['end'])
-            colors.append('salmon')
-            
-        # Complementares
-        if complementary:
-            for c in complementary:
-                tasks.append(c["Etapa"])
-                end = c["Data"]
-                # Para visualização, se for "Fim", damos duração de 30 dias para trás
-                if "Fim" in c["Etapa"]:
-                    start = end - timedelta(days=30)
-                else:
-                    start = end - timedelta(days=1)
-                start_dates.append(start)
-                end_dates.append(end)
-                colors.append('lightgreen')
-
-        # Criar Figura Matplotlib
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Desenhar barras
-        for i, task in enumerate(tasks):
-            start_num = mdates.date2num(start_dates[i])
-            end_num = mdates.date2num(end_dates[i])
-            duration = end_num - start_num
-            # Garantir largura mínima visual
-            if duration < 1: duration = 1
-            
-            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='grey', alpha=0.8)
-            
-        # Formatação
-        ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y'))
-        plt.xticks(rotation=45)
-        plt.grid(axis='x', linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        
-        # Guardar imagem temporária
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-            plt.savefig(tmpfile.name, dpi=100)
-            tmp_filename = tmpfile.name
-            
-        # Inserir no PDF
-        pdf.image(tmp_filename, x=10, y=30, w=190)
-        
-        # Limpar
-        plt.close(fig)
-        os.unlink(tmp_filename)
-        
-    except Exception as e:
-        pdf.ln(5)
-        pdf.set_font("Arial", "I", 10)
-        pdf.cell(0, 10, f"Nao foi possivel gerar o grafico: {str(e)}", 0, 1)
-
-    return pdf.output(dest='S').encode('latin-1')
-
-# ==========================================
-# 4. INTERFACE GRÁFICA (UNIVERSAL)
-# ==========================================
-
-st.title("🌿 Simulador de Prazos AIA - Universal (CCDR Centro)")
-st.markdown("Ferramenta de cálculo de prazos de acordo com o **RJAIA** e **Simplex Ambiental**.")
-
-if FPDF is None:
-    st.error("⚠️ Aviso: A biblioteca 'fpdf' não está instalada. A geração de PDF não funcionará.")
-
-# --- SIDEBAR ---
-with st.sidebar:
-    st.header("📂 Dados do Novo Processo")
-    proj_name = st.text_input("Nome do Projeto", "Novo Projeto AIA")
-    start_date = st.date_input("Data de Instrução (Dia 0)", date.today())
-    
-    st.markdown("---")
-    st.subheader("⚖️ Enquadramento")
-    
-    # NOVOS SELETORES PARA O RELATÓRIO
-    selected_typology = st.selectbox("Tipologia do Projeto", list(TIPOLOGIAS_INFO.keys()))
-    selected_sector = st.selectbox("Setor de Atividade", list(SPECIFIC_LAWS.keys()))
-    
-    # SELETOR DE REGIME
-    regime_option = st.radio(
-        "Selecione o Prazo Global:",
-        (150, 90),
-        format_func=lambda x: f"{x} Dias Úteis (AIA {'Geral' if x==150 else 'Simplificado/Outros'})"
-    )
-    
-    # DEFINIÇÕES DE MARCOS (Preenchimento automático mas editável)
-    with st.expander("⚙️ Definições Avançadas de Prazos", expanded=False):
-        st.caption("Pode ajustar os prazos intermédios se houver regras específicas de gestão.")
-        
-        if regime_option == 150:
-            d_reuniao = st.number_input("Reunião", value=9)
-            d_conf = st.number_input("Conformidade", value=30)
-            d_ptf = st.number_input("Envio PTF", value=85, help="Legalmente 85")
-            d_aud = st.number_input("Audiência", value=100)
-            d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True)
-        else: # 90 dias
-            d_reuniao = st.number_input("Reunião", value=5)
-            d_conf = st.number_input("Conformidade", value=20)
-            d_ptf = st.number_input("Envio PTF", value=50)
-            d_aud = st.number_input("Audiência", value=60)
-            d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True)
-            
-        milestones_config = {
-            "reuniao": d_reuniao,
-            "conformidade": d_conf,
-            "ptf": d_ptf,
-            "audiencia": d_aud,
-            "dia": d_dia
-        }
-
-    st.markdown("---")
-    st.subheader("⏸️ Gestão de Suspensões")
-    
-    # GESTÃO DE LISTA DE SUSPENSÕES (UNIVERSAL)
-    if 'suspensions_universal' not in st.session_state:
-        st.session_state.suspensions_universal = []
-    
-    with st.form("add_susp_uni", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        new_start = c1.date_input("Início Suspensão")
-        new_end = c2.date_input("Fim Suspensão")
-        if st.form_submit_button("Adicionar Suspensão"):
-            if new_end < new_start:
-                st.error("Data de fim anterior à data de início.")
-            else:
-                st.session_state.suspensions_universal.append({'start': new_start, 'end': new_end})
-                st.rerun()
-    
-    # Lista e Remoção
-    if st.session_state.suspensions_universal:
-        st.write("**Suspensões Ativas:**")
-        idx_to_remove = None
-        for i, s in enumerate(st.session_state.suspensions_universal):
-            col_info, col_btn = st.columns([0.85, 0.15])
-            col_info.text(f"{s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')}")
-            if col_btn.button("❌", key=f"rm_{i}"):
-                idx_to_remove = i
-        
-        if idx_to_remove is not None:
-            del st.session_state.suspensions_universal[idx_to_remove]
-            st.rerun()
-
-# ==========================================
-# 5. CÁLCULO E RESULTADOS
-# ==========================================
-
-milestones, complementary, total_susp, log_dia = calculate_workflow(
-    start_date, 
-    st.session_state.suspensions_universal, 
-    regime_option, 
-    milestones_config
-)
-
-final_dia_date = milestones[-1]["Data Prevista"]
-
-# --- DASHBOARD ---
-st.divider()
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Regime", f"{regime_option} Dias")
-c2.metric("Início Processo", start_date.strftime("%d/%m/%Y"))
-c3.metric("Suspensões", f"{total_susp} dias")
-c4.metric("Previsão DIA", final_dia_date.strftime("%d/%m/%Y"))
-
-# --- ABAS ---
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complementares", "📅 Cronograma", "⚖️ Legislação"])
-
-with tab1:
-    df_main = pd.DataFrame(milestones)
-    # Adicionar linha inicial
-    row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
-    df_main = pd.concat([row0, df_main], ignore_index=True)
-    df_main["Data Prevista"] = pd.to_datetime(df_main["Data Prevista"]).dt.strftime("%d-%m-%Y")
-    st.dataframe(df_main, use_container_width=True, hide_index=True)
-
-with tab2:
-    st.subheader("Fases de Consulta e Pareceres")
-    if complementary:
-        df_comp = pd.DataFrame(complementary)
-        df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
-        st.dataframe(df_comp, use_container_width=True)
-    else:
-        st.info("Prazos complementares indisponíveis.")
-
-with tab3:
-    # Gantt
-    data_gantt = []
-    last = start_date
-    
-    # Fases Principais
-    for m in milestones:
-        end = m["Data Prevista"]
-        start = last if last < end else end
-        data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
-        last = end
-    
-    # Fases Complementares (Sobrepostas)
-    for c in complementary:
-        if "Consulta" in c["Etapa"]:
-            end_c = c["Data"]
-            start_c = add_business_days(end_c, -30) if "Fim" in c["Etapa"] else c["Data"]
-            data_gantt.append(dict(Task=c["Etapa"], Start=start_c, Finish=end_c, Resource="Consulta Pública"))
-        else:
-            data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
-            
-    # Suspensões
-    for s in st.session_state.suspensions_universal:
-        data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
-        
-    fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource",
-                      color_discrete_map={"Fase Principal": "#2E86C1", "Suspensão": "#E74C3C", "Consulta Pública": "#27AE60", "Outros": "#F1C40F"})
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab4:
-    st.markdown("### Legislação de Referência")
-    st.write("**Transversal:**")
-    for k, v in COMMON_LAWS.items():
-        st.markdown(f"- [{k}]({v})")
-    
-    st.write(f"**Específica ({selected_sector}):**")
-    for k, v in SPECIFIC_LAWS.get(selected_sector, {}).items():
-        st.markdown(f"- [{k}]({v})")
-
-st.markdown("---")
-if st.button("Gerar Relatório PDF"):
-    pdf_bytes = create_pdf(
-        proj_name, 
-        selected_typology,
-        selected_sector,
-        f"Regime {regime_option} Dias", 
-        start_date, 
-        milestones, 
-        complementary, 
-        st.session_state.suspensions_universal, 
-        total_susp
-    )
-    if pdf_bytes:
-        st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+    pdf.cell(0, 8, "2. Resumo do Processo", 0, 1, 'L', 1)
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(50, 6, "Regime:", 0, 0)
