@@ -17,7 +17,7 @@ except ImportError:
     FPDF = None
 
 # ==========================================
-# 1. DADOS DE BASE
+# 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
 # ==========================================
 
 # Feriados (Lista completa baseada no seu Excel)
@@ -99,13 +99,11 @@ TIPOLOGIAS_INFO = {
 # ==========================================
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex) E não é feriado."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis a uma data (Simples)."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -115,33 +113,47 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
-    """Verifica se data está em suspensão."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
 def is_business_day_rigorous(check_date, suspensions):
-    """Dia útil para contagem (exclui suspensões)."""
+    # Ordem: Suspensão > Fim de Semana > Feriado
     if is_suspended(check_date, suspensions): return False
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
-def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True):
-    """Conta dias úteis um a um."""
+def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
     current_date = start_date
     days_counted = 0
+    log = []
+    
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
-        if is_business_day_rigorous(current_date, suspensions):
+        status = "Util"
+        
+        if is_suspended(current_date, suspensions):
+            status = "Suspenso"
+        elif current_date.weekday() >= 5:
+            status = "Fim de Semana"
+        elif current_date in FERIADOS:
+            status = "Feriado"
+            
+        if status == "Util":
             days_counted += 1
-    
+            
+        if return_log:
+            log.append({"Data": current_date, "Dia Contado": days_counted if status == "Util" else "-", "Status": status})
+            
     final_date = current_date
-    # Ajuste CPA
     if adjust_weekend:
         while final_date.weekday() >= 5 or final_date in FERIADOS:
              final_date += timedelta(days=1)
+             
+    if return_log:
+        return final_date, log
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
@@ -153,17 +165,24 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
+    log_30 = [] # Para guardar o log da conformidade
+    
     for m in milestones_def:
         if m["manual"] and manual_meeting_date:
             final_date = manual_meeting_date
             display = "Manual"
         else:
-            final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
+            if m["dias"] == 30: # Captura log para o dia 30
+                final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
+                log_30 = log_data
+            else:
+                final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
             display = f"{m['dias']} dias úteis"
+            
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    return results, total_susp
+    return results, total_susp, log_30
 
 # ==========================================
 # 3. PDF
@@ -183,7 +202,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf = PDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    safe_title = f"Relatorio: {project_name}"
+    safe_title = f"Relatorio de Analise: {project_name}"
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
@@ -233,7 +252,6 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     pdf.set_font("Arial", "", 10)
 
-    # Linha Entrada
     pdf.cell(90, 8, "Entrada do Processo / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
@@ -289,8 +307,9 @@ with st.sidebar:
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
+        # DATAS CALIBRADAS PARA O RESULTADO DO EXCEL (20/03/2026)
         s_s = c1.date_input("Início", date(2025, 12, 16))
-        s_e = c2.date_input("Fim", date(2026, 2, 27)) # Data ajustada para teste
+        s_e = c2.date_input("Fim", date(2026, 2, 27))
         if st.form_submit_button("Adicionar"):
             st.session_state.suspensions.append({'start': s_s, 'end': s_e})
             st.rerun()
@@ -306,17 +325,20 @@ with st.sidebar:
 # ==========================================
 # 5. EXECUÇÃO
 # ==========================================
-milestones, total_susp = calculate_all_milestones(start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend)
+milestones, total_susp, log_30 = calculate_all_milestones(
+    start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
+)
 final_date = milestones[-1]["Data Prevista"]
+conformity_date = milestones[1]["Data Prevista"]
 
 st.divider()
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Enquadramento", selected_typology[:15]+"...")
-c2.metric("Início", start_date.strftime("%d/%m/%Y"))
-c3.metric("Suspensões", f"{total_susp} dias")
+c1.metric("Início", start_date.strftime("%d/%m/%Y"))
+c2.metric("Suspensões", f"{total_susp} dias")
+c3.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"))
 c4.metric("Limite DIA", final_date.strftime("%d/%m/%Y"))
 
-tab1, tab2, tab3 = st.tabs(["Tabela", "Gráfico", "Legislação"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela", "📅 Cronograma", "📚 Legislação", "🔍 Auditoria"])
 
 with tab1:
     df = pd.DataFrame(milestones)
@@ -345,6 +367,13 @@ with tab3:
     st.write("**Transversal:**")
     for k,v in COMMON_LAWS.items():
         st.markdown(f"- [{k}]({v})")
+
+with tab4:
+    st.markdown("### Auditoria de Contagem (Conformidade - 30 Dias)")
+    st.write("Verifique dia-a-dia como o sistema contou os 30 dias úteis.")
+    df_log = pd.DataFrame(log_30)
+    df_log["Data"] = pd.to_datetime(df_log["Data"]).dt.strftime("%d-%m-%Y")
+    st.dataframe(df_log, use_container_width=True)
 
 st.markdown("---")
 if st.button("Gerar PDF"):
