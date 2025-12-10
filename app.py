@@ -16,10 +16,8 @@ except ImportError:
     FPDF = None
 
 # ==========================================
-# 1. DADOS DE BASE
+# 1. DADOS DE BASE (FERIADOS ATÉ 2030)
 # ==========================================
-
-# Feriados (Lista completa do Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -118,9 +116,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
-    # CORREÇÃO: Dias ajustados para corresponder ao Excel do utilizador
-    # PTF passou de 85 para 100 dias
-    # Audiência passou de 100 para 120 dias
+    # Marcos Principais
     milestones_def = [
         {"dias": 9,   "fase": "Data Reunião", "manual": True},
         {"dias": 30,  "fase": "Limite Conformidade", "manual": False},
@@ -129,28 +125,52 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
-    log_dia = []
+    log_conf = [] 
+    
+    # Datas Calculadas
+    conf_date = None # Para guardar a data da conformidade
     
     for m in milestones_def:
         if m["manual"] and manual_meeting_date:
             final_date = manual_meeting_date
             display = "Manual"
         else:
-            if m["dias"] == 150: 
+            if m["dias"] == 30: 
                 final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
-                log_dia = log_data
+                log_conf = log_data
+                conf_date = final_date
             else:
                 final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
             display = f"{m['dias']} dias úteis"
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
+    # Marcos Complementares (Baseados na Conformidade Ajustada)
+    # Assumimos que estes prazos correm após a conformidade já ter descontado a suspensão
+    if conf_date:
+        cp_start = add_business_days(conf_date, 5)
+        cp_end = add_business_days(cp_start, 30)
+        cp_report = add_business_days(cp_end, 7)
+        visit_date = add_business_days(cp_start, 15) # 3ª semana
+        # Pareceres externos: ~23 dias uteis apos conformidade
+        external_ops = add_business_days(conf_date, 23)
+        
+        complementary = [
+            {"Etapa": "Início Consulta Pública", "Prazo": "Conf + 5 dias", "Data": cp_start},
+            {"Etapa": "Fim Consulta Pública", "Prazo": "Início CP + 30 dias", "Data": cp_end},
+            {"Etapa": "Relatório da CP", "Prazo": "Fim CP + 7 dias", "Data": cp_report},
+            {"Etapa": "Visita Técnica", "Prazo": "3ª semana CP", "Data": visit_date},
+            {"Etapa": "Pareceres Externos", "Prazo": "Conf + 23 dias (est.)", "Data": external_ops},
+        ]
+    else:
+        complementary = []
+
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    return results, total_susp, log_dia
+    return results, complementary, total_susp, log_conf
 
 # ==========================================
 # 3. PDF
 # ==========================================
-def create_pdf(project_name, typology, sector, start_date, milestones, suspensions, total_susp):
+def create_pdf(project_name, typology, sector, start_date, milestones, complementary, suspensions, total_susp):
     if FPDF is None: return None
     class PDF(FPDF):
         def header(self):
@@ -169,22 +189,19 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
-    # Enquadramento
+    # 1. Enquadramento
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "1. Enquadramento e Legislacao", 0, 1)
-    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 10, "1. Enquadramento", 0, 1)
+    pdf.set_font("Arial", "", 10)
     pdf.cell(40, 6, "Tipologia:", 0, 0)
-    pdf.set_font("Arial", "", 10)
     pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
-    pdf.set_font("Arial", "B", 10)
     pdf.cell(40, 6, "Setor:", 0, 0)
-    pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
     pdf.ln(4)
 
-    # Cronograma
+    # 2. Cronograma Principal
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "2. Cronograma do Processo", 0, 1)
+    pdf.cell(0, 10, "2. Cronograma Principal", 0, 1)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, f"Data Inicio: {start_date.strftime('%d/%m/%Y')}", 0, 1)
     pdf.cell(0, 6, f"Suspensoes (Total): {total_susp} dias", 0, 1)
@@ -207,10 +224,27 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
         pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
 
+    # 3. Prazos Complementares
+    if complementary:
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 10, "3. Prazos Complementares (Consulta Publica)", 0, 1)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
+        pdf.cell(40, 8, "Referencia", 1, 0, 'C', 1)
+        pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
+        pdf.set_font("Arial", "", 10)
+        
+        for c in complementary:
+            pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Prazo"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
+            pdf.ln()
+
     if suspensions:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 8, "Suspensoes (PeA):", 0, 1)
+        pdf.cell(0, 8, "Registo de Suspensoes:", 0, 1)
         pdf.set_font("Arial", "", 10)
         for s in suspensions:
             dur = (s['end'] - s['start']).days + 1
@@ -230,8 +264,6 @@ if FPDF is None:
 with st.sidebar:
     st.header("📂 Dados do Processo")
     proj_name = st.text_input("Nome do Projeto", "Processo 2025")
-    
-    # DATA CORRETA: 30/01/2025
     start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 1, 30))
     
     st.markdown("---")
@@ -249,14 +281,12 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏸️ Suspensões")
-    
-    st.info("Nota: Para obter 09/05/2025 na Conformidade, use Início 05/03/2025 e Fim 29/04/2025.")
+    st.info("Para obter 09/05/2025 (Conformidade): Início 05/03/2025 | Fim 29/04/2025.")
     
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
-        # CALIBRAÇÃO 
         s_s = c1.date_input("Início", date(2025, 3, 5))
         s_e = c2.date_input("Fim", date(2025, 4, 29))
         if st.form_submit_button("Adicionar"):
@@ -274,7 +304,7 @@ with st.sidebar:
 # ==========================================
 # 5. EXECUÇÃO
 # ==========================================
-milestones, total_susp, log_dia = calculate_all_milestones(
+milestones, complementary, total_susp, log_conf = calculate_all_milestones(
     start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
 )
 final_date = milestones[-1]["Data Prevista"]
@@ -287,7 +317,7 @@ c2.metric("Suspensões", f"{total_susp} dias")
 c3.metric("Conformidade (30d)", conformity_date.strftime("%d/%m/%Y"))
 c4.metric("Limite DIA (150d)", final_date.strftime("%d/%m/%Y"))
 
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela", "📅 Cronograma", "📚 Legislação", "🔍 Auditoria"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complementares", "📅 Cronograma", "🔍 Auditoria"])
 
 with tab1:
     df = pd.DataFrame(milestones)
@@ -297,33 +327,47 @@ with tab1:
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 with tab2:
+    st.subheader("Consulta Pública e Pareceres")
+    if complementary:
+        df_comp = pd.DataFrame(complementary)
+        df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
+        st.dataframe(df_comp, use_container_width=True)
+    else:
+        st.warning("Não foi possível calcular prazos complementares (falta data de conformidade).")
+
+with tab3:
     data_gantt = []
     last = start_date
     for m in milestones:
         end = m["Data Prevista"]
         start = last if last < end else end
-        data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase"))
+        data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
         last = end
+    
+    # Adicionar Complementares ao Gantt
+    for c in complementary:
+        if "Consulta" in c["Etapa"]:
+            # Duração aproximada visual
+            end_c = c["Data"]
+            start_c = add_business_days(end_c, -30) if "Fim" in c["Etapa"] else c["Data"]
+            data_gantt.append(dict(Task=c["Etapa"], Start=start_c, Finish=end_c, Resource="Consulta Pública"))
+        else:
+            data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
+
     for s in st.session_state.suspensions:
         data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
-    fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", color_discrete_map={"Fase": "#2E86C1", "Suspensão": "#E74C3C"})
+        
+    fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", 
+                      color_discrete_map={"Fase Principal": "#2E86C1", "Suspensão": "#E74C3C", "Consulta Pública": "#27AE60", "Outros": "#F1C40F"})
     st.plotly_chart(fig, use_container_width=True)
 
-with tab3:
-    st.write(f"**Setor:** {selected_sector}")
-    for k,v in SPECIFIC_LAWS.get(selected_sector, {}).items():
-        st.markdown(f"- [{k}]({v})")
-    st.write("**Transversal:**")
-    for k,v in COMMON_LAWS.items():
-        st.markdown(f"- [{k}]({v})")
-
 with tab4:
-    st.markdown("### Auditoria de Contagem Diária")
-    df_log = pd.DataFrame(log_dia)
+    st.markdown("### Auditoria de Contagem Diária (Conformidade)")
+    df_log = pd.DataFrame(log_conf)
     df_log["Data"] = pd.to_datetime(df_log["Data"]).dt.strftime("%d-%m-%Y")
     st.dataframe(df_log, use_container_width=True)
 
 st.markdown("---")
 if st.button("Gerar PDF"):
-    b = create_pdf(proj_name, selected_typology, selected_sector, start_date, milestones, st.session_state.suspensions, total_susp)
+    b = create_pdf(proj_name, selected_typology, selected_sector, start_date, milestones, complementary, st.session_state.suspensions, total_susp)
     if b: st.download_button("Download PDF", b, "relatorio.pdf", "application/pdf")
