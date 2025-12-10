@@ -91,7 +91,6 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
 
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
-        
         status = "Util"
         if is_suspended(current_date, suspensions):
             status = "Suspenso"
@@ -116,7 +115,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
-    # Marcos Principais
+    # Marcos Principais (Ajustados ao Excel)
     milestones_def = [
         {"dias": 9,   "fase": "Data Reunião", "manual": True},
         {"dias": 30,  "fase": "Limite Conformidade", "manual": False},
@@ -127,7 +126,6 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
     results = []
     log_conf = [] 
     
-    # Datas Calculadas
     conf_date = None # Para guardar a data da conformidade
     
     for m in milestones_def:
@@ -144,22 +142,26 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
             display = f"{m['dias']} dias úteis"
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
-    # Marcos Complementares (Baseados na Conformidade Ajustada)
-    # Assumimos que estes prazos correm após a conformidade já ter descontado a suspensão
+    # --- MARCOS COMPLEMENTARES (AJUSTADOS À LÓGICA DO EXCEL) ---
     if conf_date:
+        # Início CP: 5 dias úteis após Conformidade
         cp_start = add_business_days(conf_date, 5)
+        # Fim CP: 30 dias úteis após Início CP (não Conformidade)
         cp_end = add_business_days(cp_start, 30)
+        # Relatório CP: 7 dias úteis após Fim CP
         cp_report = add_business_days(cp_end, 7)
-        visit_date = add_business_days(cp_start, 15) # 3ª semana
-        # Pareceres externos: ~23 dias uteis apos conformidade
-        external_ops = add_business_days(conf_date, 23)
+        # Visita: 3ª semana da CP (15 dias úteis após Início CP)
+        visit_date = add_business_days(cp_start, 15)
+        # Pareceres Externos: 23 dias úteis após INÍCIO DA CP (Validação do Excel)
+        # Excel: Inicio CP (16/05) -> Pareceres (20/06). Dias úteis: 23 (Correto)
+        external_ops = add_business_days(cp_start, 23)
         
         complementary = [
             {"Etapa": "Início Consulta Pública", "Prazo": "Conf + 5 dias", "Data": cp_start},
             {"Etapa": "Fim Consulta Pública", "Prazo": "Início CP + 30 dias", "Data": cp_end},
             {"Etapa": "Relatório da CP", "Prazo": "Fim CP + 7 dias", "Data": cp_report},
             {"Etapa": "Visita Técnica", "Prazo": "3ª semana CP", "Data": visit_date},
-            {"Etapa": "Pareceres Externos", "Prazo": "Conf + 23 dias (est.)", "Data": external_ops},
+            {"Etapa": "Pareceres Externos", "Prazo": "Início CP + 23 dias", "Data": external_ops},
         ]
     else:
         complementary = []
@@ -189,7 +191,6 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
-    # 1. Enquadramento
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, "1. Enquadramento", 0, 1)
     pdf.set_font("Arial", "", 10)
@@ -199,7 +200,6 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
     pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
     pdf.ln(4)
 
-    # 2. Cronograma Principal
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, "2. Cronograma Principal", 0, 1)
     pdf.set_font("Arial", "", 10)
@@ -214,7 +214,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
     pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     pdf.set_font("Arial", "", 10)
 
-    pdf.cell(90, 8, "Entrada do Processo / Instrucao", 1, 0, 'L')
+    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
 
@@ -224,32 +224,21 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
         pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
 
-    # 3. Prazos Complementares
     if complementary:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 10, "3. Prazos Complementares (Consulta Publica)", 0, 1)
+        pdf.cell(0, 10, "3. Prazos Complementares", 0, 1)
         pdf.set_font("Arial", "B", 10)
         pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
         pdf.cell(40, 8, "Referencia", 1, 0, 'C', 1)
         pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
         pdf.set_font("Arial", "", 10)
-        
         for c in complementary:
             pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
             pdf.cell(40, 8, c["Prazo"].encode('latin-1','replace').decode('latin-1'), 1)
             pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
             pdf.ln()
 
-    if suspensions:
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 8, "Registo de Suspensoes:", 0, 1)
-        pdf.set_font("Arial", "", 10)
-        for s in suspensions:
-            dur = (s['end'] - s['start']).days + 1
-            pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
-            
     return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
@@ -281,7 +270,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏸️ Suspensões")
-    st.info("Para obter 09/05/2025 (Conformidade): Início 05/03/2025 | Fim 29/04/2025.")
+    st.info("Para 09/05/2025 (Conformidade): Início 05/03/2025 | Fim 29/04/2025.")
     
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
@@ -314,14 +303,14 @@ st.divider()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Início", start_date.strftime("%d/%m/%Y"))
 c2.metric("Suspensões", f"{total_susp} dias")
-c3.metric("Conformidade (30d)", conformity_date.strftime("%d/%m/%Y"))
-c4.metric("Limite DIA (150d)", final_date.strftime("%d/%m/%Y"))
+c3.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"))
+c4.metric("Limite DIA", final_date.strftime("%d/%m/%Y"))
 
 tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complementares", "📅 Cronograma", "🔍 Auditoria"])
 
 with tab1:
     df = pd.DataFrame(milestones)
-    row0 = pd.DataFrame([{"Etapa": "Entrada do Processo / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
+    row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
     df = pd.concat([row0, df], ignore_index=True)
     df["Data Prevista"] = pd.to_datetime(df["Data Prevista"]).dt.strftime("%d-%m-%Y")
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -333,7 +322,7 @@ with tab2:
         df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df_comp, use_container_width=True)
     else:
-        st.warning("Não foi possível calcular prazos complementares (falta data de conformidade).")
+        st.warning("Sem dados para cálculo complementar.")
 
 with tab3:
     data_gantt = []
@@ -343,20 +332,15 @@ with tab3:
         start = last if last < end else end
         data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
         last = end
-    
-    # Adicionar Complementares ao Gantt
     for c in complementary:
         if "Consulta" in c["Etapa"]:
-            # Duração aproximada visual
             end_c = c["Data"]
             start_c = add_business_days(end_c, -30) if "Fim" in c["Etapa"] else c["Data"]
             data_gantt.append(dict(Task=c["Etapa"], Start=start_c, Finish=end_c, Resource="Consulta Pública"))
         else:
             data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
-
     for s in st.session_state.suspensions:
         data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
-        
     fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", 
                       color_discrete_map={"Fase Principal": "#2E86C1", "Suspensão": "#E74C3C", "Consulta Pública": "#27AE60", "Outros": "#F1C40F"})
     st.plotly_chart(fig, use_container_width=True)
