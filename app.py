@@ -66,13 +66,6 @@ def is_suspended(current_date, suspensions):
             return True
     return False
 
-def is_business_day_rigorous(check_date, suspensions):
-    """Dia útil para contagem (exclui suspensões, fins de semana e feriados)."""
-    if is_suspended(check_date, suspensions): return False
-    if check_date.weekday() >= 5: return False
-    if check_date in FERIADOS: return False
-    return True
-
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
     """
     Algoritmo principal: Conta dias úteis progressivamente, saltando suspensões.
@@ -119,12 +112,6 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
     results = []
     log_final = []
     
-    # Extrair configurações dos marcos
-    # Ex: milestones_config = {"Reunião": 9, "Conformidade": 30, ...}
-    
-    # 1. Marcos Principais (Sequenciais em termos de lógica de prazo, mas calculados a partir do Dia 0)
-    # Nota: No RJAIA, os prazos contam-se geralmente a partir da instrução.
-    
     # Lista ordenada de etapas para calcular
     steps = [
         ("Data Reunião", milestones_config["reuniao"]),
@@ -161,7 +148,7 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
         cp_end = add_business_days(cp_start, 30)
         # Relatório CP: 7 dias úteis após Fim CP
         cp_report = add_business_days(cp_end, 7)
-        # Pareceres Externos: 23 dias úteis após INÍCIO da CP (conforme validação anterior)
+        # Pareceres Externos: 23 dias úteis após INÍCIO da CP
         external_ops = add_business_days(cp_start, 23)
         
         complementary = [
@@ -279,7 +266,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚖️ Regime Legal")
     
-    # SELETOR DE REGIME (150 ou 90 Dias)
+    # SELETOR DE REGIME
     regime_option = st.radio(
         "Selecione o Prazo Global:",
         (150, 90),
@@ -293,7 +280,7 @@ with st.sidebar:
         if regime_option == 150:
             d_reuniao = st.number_input("Reunião", value=9)
             d_conf = st.number_input("Conformidade", value=30)
-            d_ptf = st.number_input("Envio PTF", value=85, help="Legalmente 85, gestão interna pode ser diferente")
+            d_ptf = st.number_input("Envio PTF", value=85, help="Legalmente 85")
             d_aud = st.number_input("Audiência", value=100)
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True)
         else: # 90 dias
@@ -313,7 +300,6 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏸️ Gestão de Suspensões")
-    st.caption("Adicione períodos de suspensão (ex: Pedido de Elementos Adicionais).")
     
     # GESTÃO DE LISTA DE SUSPENSÕES (UNIVERSAL)
     if 'suspensions_universal' not in st.session_state:
@@ -356,7 +342,6 @@ milestones, complementary, total_susp, log_dia = calculate_workflow(
 )
 
 final_dia_date = milestones[-1]["Data Prevista"]
-conf_date = milestones[1]["Data Prevista"]
 
 # --- DASHBOARD ---
 st.divider()
@@ -371,7 +356,6 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complem
 
 with tab1:
     df_main = pd.DataFrame(milestones)
-    # Adicionar linha inicial
     row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
     df_main = pd.concat([row0, df_main], ignore_index=True)
     df_main["Data Prevista"] = pd.to_datetime(df_main["Data Prevista"]).dt.strftime("%d-%m-%Y")
@@ -384,21 +368,17 @@ with tab2:
         df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df_comp, use_container_width=True)
     else:
-        st.info("Prazos complementares indisponíveis (verifique a data de conformidade).")
+        st.info("Prazos complementares indisponíveis.")
 
 with tab3:
-    # Gantt
     data_gantt = []
     last = start_date
-    
-    # Fases Principais
     for m in milestones:
         end = m["Data Prevista"]
         start = last if last < end else end
         data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
         last = end
     
-    # Fases Complementares (Sobrepostas)
     for c in complementary:
         if "Consulta" in c["Etapa"]:
             end_c = c["Data"]
@@ -407,7 +387,6 @@ with tab3:
         else:
             data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
             
-    # Suspensões
     for s in st.session_state.suspensions_universal:
         data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
         
@@ -425,7 +404,6 @@ if st.button("Gerar Relatório PDF"):
     pdf_bytes = create_pdf(
         proj_name, 
         f"Regime {regime_option} Dias", 
-        "Geral", 
         start_date, 
         milestones, 
         complementary, 
