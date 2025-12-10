@@ -10,7 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Tenta importar FPDF
 try:
     from fpdf import FPDF
 except ImportError:
@@ -20,7 +19,7 @@ except ImportError:
 # 1. DADOS DE BASE
 # ==========================================
 
-# Feriados (Lista completa extraída do Excel)
+# Feriados (Lista completa do Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -59,13 +58,11 @@ TIPOLOGIAS_INFO = {
 # ==========================================
 
 def is_business_day(check_date):
-    """Verifica se é dia útil sem contar suspensões."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis simples."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -75,21 +72,18 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
-    """Verifica se a data atual está dentro de um período de suspensão."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
 def is_business_day_rigorous(check_date, suspensions):
-    """Verifica se conta para o prazo (exclui suspensões, fins de semana e feriados)."""
     if is_suspended(check_date, suspensions): return False
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
-    """Conta dias úteis um a um."""
     current_date = start_date
     days_counted = 0
     log = []
@@ -124,31 +118,34 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
+    # CORREÇÃO: Dias ajustados para corresponder ao Excel do utilizador
+    # PTF passou de 85 para 100 dias
+    # Audiência passou de 100 para 120 dias
     milestones_def = [
         {"dias": 9,   "fase": "Data Reunião", "manual": True},
         {"dias": 30,  "fase": "Limite Conformidade", "manual": False},
-        {"dias": 85,  "fase": "Envio PTF à AAIA", "manual": False},
-        {"dias": 100, "fase": "Audiência de Interessados", "manual": False},
+        {"dias": 100, "fase": "Envio PTF à AAIA (100d)", "manual": False},
+        {"dias": 120, "fase": "Audiência de Interessados (120d)", "manual": False},
         {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
-    log_conf = [] # Log Conformidade (30 dias)
+    log_dia = []
     
     for m in milestones_def:
         if m["manual"] and manual_meeting_date:
             final_date = manual_meeting_date
             display = "Manual"
         else:
-            if m["dias"] == 30: 
+            if m["dias"] == 150: 
                 final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
-                log_conf = log_data
+                log_dia = log_data
             else:
                 final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
             display = f"{m['dias']} dias úteis"
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    return results, total_susp, log_conf
+    return results, total_susp, log_dia
 
 # ==========================================
 # 3. PDF
@@ -172,17 +169,22 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
+    # Enquadramento
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "1. Enquadramento", 0, 1)
-    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 10, "1. Enquadramento e Legislacao", 0, 1)
+    pdf.set_font("Arial", "B", 10)
     pdf.cell(40, 6, "Tipologia:", 0, 0)
-    pdf.cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'), 0, 1)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
+    pdf.set_font("Arial", "B", 10)
     pdf.cell(40, 6, "Setor:", 0, 0)
+    pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
     pdf.ln(4)
 
+    # Cronograma
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "2. Cronograma", 0, 1)
+    pdf.cell(0, 10, "2. Cronograma do Processo", 0, 1)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, f"Data Inicio: {start_date.strftime('%d/%m/%Y')}", 0, 1)
     pdf.cell(0, 6, f"Suspensoes (Total): {total_susp} dias", 0, 1)
@@ -195,7 +197,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     pdf.set_font("Arial", "", 10)
 
-    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
+    pdf.cell(90, 8, "Entrada do Processo / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
 
@@ -208,7 +210,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
     if suspensions:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 8, "Suspensoes:", 0, 1)
+        pdf.cell(0, 8, "Suspensoes (PeA):", 0, 1)
         pdf.set_font("Arial", "", 10)
         for s in suspensions:
             dur = (s['end'] - s['start']).days + 1
@@ -227,7 +229,7 @@ if FPDF is None:
 
 with st.sidebar:
     st.header("📂 Dados do Processo")
-    proj_name = st.text_input("Nome do Projeto", "Processo 2025 (Prazos_AIA_2025.xlsx)")
+    proj_name = st.text_input("Nome do Projeto", "Processo 2025")
     
     # DATA CORRETA: 30/01/2025
     start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 1, 30))
@@ -248,16 +250,13 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⏸️ Suspensões")
     
-    st.info("""
-    **Para obter 09/05/2025 (Conformidade):**
-    A suspensão deve ser considerada de **05/03/2025** a **29/04/2025** (retomando a contagem a 30/04).
-    """)
+    st.info("Nota: Para obter 09/05/2025 na Conformidade, use Início 05/03/2025 e Fim 29/04/2025.")
     
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
-        # DATAS CALIBRADAS
+        # CALIBRAÇÃO 
         s_s = c1.date_input("Início", date(2025, 3, 5))
         s_e = c2.date_input("Fim", date(2025, 4, 29))
         if st.form_submit_button("Adicionar"):
@@ -275,7 +274,7 @@ with st.sidebar:
 # ==========================================
 # 5. EXECUÇÃO
 # ==========================================
-milestones, total_susp, log_conf = calculate_all_milestones(
+milestones, total_susp, log_dia = calculate_all_milestones(
     start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
 )
 final_date = milestones[-1]["Data Prevista"]
@@ -319,8 +318,8 @@ with tab3:
         st.markdown(f"- [{k}]({v})")
 
 with tab4:
-    st.markdown("### Auditoria de Contagem Diária (Conformidade - 30 Dias)")
-    df_log = pd.DataFrame(log_conf)
+    st.markdown("### Auditoria de Contagem Diária")
+    df_log = pd.DataFrame(log_dia)
     df_log["Data"] = pd.to_datetime(df_log["Data"]).dt.strftime("%d-%m-%Y")
     st.dataframe(df_log, use_container_width=True)
 
@@ -328,4 +327,3 @@ st.markdown("---")
 if st.button("Gerar PDF"):
     b = create_pdf(proj_name, selected_typology, selected_sector, start_date, milestones, st.session_state.suspensions, total_susp)
     if b: st.download_button("Download PDF", b, "relatorio.pdf", "application/pdf")
-
