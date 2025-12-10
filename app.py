@@ -7,66 +7,141 @@ import matplotlib.dates as mdates
 import tempfile
 import os
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA E ESTILO (O SEGREDO DO VISUAL) ---
+# --- 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM ---
 st.set_page_config(
-    page_title="Simulador AIA | CCDR Centro",
-    page_icon="🌿",
+    page_title="AIA Planner Pro",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS Personalizado para um look moderno
+# INJEÇÃO DE CSS AVANÇADO (DESIGN VANGUARDISTA)
 st.markdown("""
-    <style>
-    /* Importar fonte moderna */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-    
+<style>
+    /* Importar Fontes Modernas */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    /* Reset Geral */
     html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        color: #1e293b;
     }
-    
-    /* Estilo dos Cartões de Métricas */
-    div[data-testid="stMetric"] {
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        transition: transform 0.2s;
+
+    /* Fundo da Aplicação */
+    .stApp {
+        background-color: #f8fafc;
+        background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+        background-size: 20px 20px;
     }
-    div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 8px rgba(0,0,0,0.1);
-        border-color: #4CAF50;
-    }
-    
-    /* Cabeçalhos */
-    h1 { color: #1E3A8A; font-weight: 700; letter-spacing: -1px; }
-    h2, h3 { color: #333; }
-    
+
     /* Barra Lateral */
     section[data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        border-right: 1px solid #e0e0e0;
+        background-color: #ffffff;
+        border-right: 1px solid #e2e8f0;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.02);
     }
     
-    /* Botões */
-    div.stButton > button {
-        background-color: #1E3A8A;
-        color: white;
-        border-radius: 8px;
-        border: none;
-        padding: 10px 20px;
+    section[data-testid="stSidebar"] h1 {
+        font-size: 1.2rem !important;
+        color: #0f172a;
+        font-weight: 700;
+    }
+
+    /* Cards de Métricas (O Grande Destaque) */
+    div[data-testid="stMetric"] {
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 16px;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        transition: all 0.3s ease;
+    }
+
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+        border-color: #3b82f6;
+    }
+
+    div[data-testid="stMetric"] label {
+        color: #64748b;
+        font-size: 0.85rem;
         font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
-    div.stButton > button:hover {
-        background-color: #152c6b;
-        color: white;
+
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        color: #0f172a;
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+
+    /* Títulos e Cabeçalhos */
+    h1, h2, h3 {
+        color: #0f172a;
+        font-weight: 700;
+        letter-spacing: -0.025em;
     }
     
-    /* Alertas */
-    .stAlert { border-radius: 8px; }
-    </style>
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: transparent;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 45px;
+        white-space: pre-wrap;
+        background-color: #ffffff;
+        border-radius: 8px;
+        color: #64748b;
+        font-weight: 500;
+        border: 1px solid #e2e8f0;
+        padding: 0 20px;
+        transition: all 0.2s;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #eff6ff;
+        color: #2563eb;
+        border-color: #bfdbfe;
+    }
+
+    /* Botão Principal (Download) */
+    .stButton > button {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 10px;
+        font-weight: 600;
+        letter-spacing: 0.025em;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+        transition: all 0.3s;
+        width: 100%;
+    }
+
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.4);
+        transform: translateY(-1px);
+        color: white;
+    }
+
+    /* Ajustes de Input */
+    .stDateInput > label, .stSelectbox > label, .stTextInput > label, .stNumberInput > label {
+        font-weight: 600;
+        color: #334155;
+    }
+    
+    /* Expander */
+    .streamlit-expanderHeader {
+        background-color: #ffffff;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # Tenta importar FPDF
@@ -76,10 +151,9 @@ except ImportError:
     FPDF = None
 
 # ==========================================
-# 2. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
+# 2. DADOS E CONSTANTES
 # ==========================================
 
-# Feriados
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -115,7 +189,7 @@ SPECIFIC_LAWS = {
 }
 
 # ==========================================
-# 3. MOTOR DE CÁLCULO (LÓGICA INALTERADA)
+# 3. LÓGICA DE CÁLCULO (RIGOROSA E INTOCADA)
 # ==========================================
 
 def is_business_day(check_date):
@@ -150,41 +224,33 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
     log = []
     
     if return_log:
-        log.append({"Data": current_date, "Dia Contado": 0, "Status": "Início"})
+        log.append({"Data": current_date, "Dia Contado": 0, "Status": "Inicio"})
 
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
-        
         status = "Util"
-        if is_suspended(current_date, suspensions):
-            status = "Suspenso"
-        elif current_date.weekday() >= 5:
-            status = "Fim de Semana"
-        elif current_date in FERIADOS:
-            status = "Feriado"
+        if is_suspended(current_date, suspensions): status = "Suspenso"
+        elif current_date.weekday() >= 5: status = "Fim de Semana"
+        elif current_date in FERIADOS: status = "Feriado"
             
-        if status == "Util":
-            days_counted += 1
-            
-        if return_log:
-            log.append({"Data": current_date, "Dia Contado": days_counted if status == "Util" else "-", "Status": status})
+        if status == "Util": days_counted += 1
+        if return_log: log.append({"Data": current_date, "Dia Contado": days_counted if status == "Util" else "-", "Status": status})
             
     final_date = current_date
     if adjust_weekend:
         while final_date.weekday() >= 5 or final_date in FERIADOS:
              final_date += timedelta(days=1)
     
-    if return_log:
-        return final_date, log
+    if return_log: return final_date, log
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
     milestones_def = [
-        {"dias": 9,   "fase": "Reunião Prévia", "manual": True},
-        {"dias": 30,  "fase": "Conformidade", "manual": False},
-        {"dias": 100, "fase": "Envio PTF", "manual": False},
-        {"dias": 120, "fase": "Audiência Interessados", "manual": False},
-        {"dias": 150, "fase": "Emissão da DIA", "manual": False}
+        {"dias": 9,   "fase": "Data Reunião", "manual": True},
+        {"dias": 30,  "fase": "Limite Conformidade", "manual": False},
+        {"dias": 100, "fase": "Envio PTF à AAIA (100d)", "manual": False},
+        {"dias": 120, "fase": "Audiência de Interessados (120d)", "manual": False},
+        {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
     log_dia = []
@@ -217,8 +283,8 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         complementary = [
             {"Etapa": "Início Consulta Pública", "Ref": "Conf + 5 dias", "Data": cp_start},
             {"Etapa": "Fim Consulta Pública", "Ref": "Início CP + 30 dias", "Data": cp_end},
-            {"Etapa": "Prazo Pareceres", "Ref": "Início CP + 23 dias", "Data": external_ops},
-            {"Etapa": "Relatório CP", "Ref": "Fim CP + 7 dias", "Data": cp_report},
+            {"Etapa": "Prazo Pareceres Externos", "Ref": "Início CP + 23 dias", "Data": external_ops},
+            {"Etapa": "Relatório da CP", "Ref": "Fim CP + 7 dias", "Data": cp_report},
         ]
 
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
@@ -232,30 +298,31 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 10)
-            self.set_text_color(30, 58, 138) # Azul Profissional
+            self.set_text_color(37, 99, 235) # Azul Moderno
             self.cell(0, 10, 'CCDR CENTRO - AUTORIDADE DE AIA', 0, 1, 'C')
+            self.set_draw_color(226, 232, 240)
             self.line(10, 20, 200, 20)
             self.ln(10)
         def footer(self):
             self.set_y(-15)
             self.set_font('Arial', 'I', 8)
-            self.set_text_color(128, 128, 128)
-            self.cell(0, 10, f'Pagina {self.page_no()} - Gerado pelo Simulador AIA', 0, 0, 'C')
+            self.set_text_color(148, 163, 184)
+            self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
 
     pdf = PDF()
     pdf.add_page()
     
     # Título
     pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(0, 0, 0)
+    pdf.set_text_color(15, 23, 42)
     safe_title = f"Relatorio de Prazos: {project_name}"
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
-    # 1. Enquadramento Legal
-    pdf.set_fill_color(240, 248, 255) # Azul muito claro
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "1. Enquadramento Legal", 0, 1, 'L', 1)
+    # 1. Enquadramento
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "1. Enquadramento e Legislacao", 0, 1, 'L', 1)
     pdf.ln(2)
     
     pdf.set_font("Arial", "B", 10)
@@ -269,7 +336,7 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     pdf.ln(4)
 
     # 2. Resumo
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("Arial", "B", 11)
     pdf.cell(0, 8, "2. Resumo do Processo", 0, 1, 'L', 1)
     pdf.ln(2)
     pdf.set_font("Arial", "", 10)
@@ -282,17 +349,18 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     pdf.ln(5)
 
     # 3. Cronograma
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("Arial", "B", 11)
     pdf.cell(0, 8, "3. Cronograma Oficial", 0, 1, 'L', 1)
     pdf.ln(2)
     
     pdf.set_font("Arial", "B", 9)
-    pdf.set_fill_color(220, 220, 220)
+    pdf.set_fill_color(226, 232, 240)
     pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
-    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
-    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+    pdf.cell(40, 8, "Prazo", 1, 0, 'C', 1)
+    pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     
     pdf.set_font("Arial", "", 9)
+    # Linha 0
     pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
@@ -303,9 +371,10 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
         pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
 
+    # Complementares
     if complementary:
         pdf.ln(2)
-        pdf.set_font("Arial", "B", 10)
+        pdf.set_font("Arial", "I", 9)
         pdf.cell(0, 6, "Fases Complementares", 0, 1)
         pdf.set_font("Arial", "", 9)
         for c in complementary:
@@ -314,11 +383,10 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
             pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
             pdf.ln()
 
-    # 4. Gráfico Gantt
+    # 4. Gantt Image (Matplotlib)
     pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
+    pdf.set_font("Arial", "B", 11)
     pdf.cell(0, 10, "4. Cronograma Visual (Gantt)", 0, 1, 'L', 1)
-    pdf.ln(5)
     
     try:
         tasks = []
@@ -333,14 +401,14 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
             tasks.append(m["Etapa"])
             start_dates.append(start)
             end_dates.append(end)
-            colors.append('#87CEEB') # Skyblue
+            colors.append('#3b82f6') # Blue
             last = end
             
         for s in suspensions:
             tasks.append("Suspensão")
             start_dates.append(s['start'])
             end_dates.append(s['end'])
-            colors.append('#FA8072') # Salmon
+            colors.append('#ef4444') # Red
             
         if complementary:
             for c in complementary:
@@ -352,7 +420,7 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
                     start = end - timedelta(days=1)
                 start_dates.append(start)
                 end_dates.append(end)
-                colors.append('#90EE90') # Lightgreen
+                colors.append('#22c55e') # Green
 
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, task in enumerate(tasks):
@@ -360,26 +428,25 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
             end_num = mdates.date2num(end_dates[i])
             duration = end_num - start_num
             if duration < 1: duration = 1
-            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='grey', alpha=0.8)
+            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='#94a3b8', alpha=0.9, height=0.6)
             
         ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y'))
-        plt.xticks(rotation=45)
-        plt.grid(axis='x', linestyle='--', alpha=0.5)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
+        plt.xticks(rotation=45, fontsize=8)
+        plt.yticks(fontsize=8)
+        plt.grid(axis='x', linestyle='--', alpha=0.3)
+        plt.title(f"Cronograma: {project_name}", fontsize=10)
         plt.tight_layout()
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-            plt.savefig(tmpfile.name, dpi=100)
+            plt.savefig(tmpfile.name, dpi=150)
             tmp_filename = tmpfile.name
             
         pdf.image(tmp_filename, x=10, y=30, w=190)
         plt.close(fig)
         os.unlink(tmp_filename)
-        
-    except Exception as e:
-        pdf.ln(5)
-        pdf.set_font("Arial", "I", 10)
-        pdf.cell(0, 10, f"Erro no grafico: {str(e)}", 0, 1)
+    except:
+        pdf.cell(0, 10, "Erro ao gerar grafico", 0, 1)
 
     return pdf.output(dest='S').encode('latin-1')
 
@@ -387,26 +454,30 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
 # 5. INTERFACE DO UTILIZADOR
 # ==========================================
 
-# Cabeçalho
-st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Simulador de Prazos AIA</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Ferramenta de gestão de prazos RJAIA & Simplex | <b>CCDR Centro</b></p>", unsafe_allow_html=True)
+# Cabeçalho Moderno
+st.markdown("""
+    <div style='text-align: center; padding: 2rem 0;'>
+        <h1 style='color: #1e293b; margin-bottom: 0;'>Simulador AIA</h1>
+        <p style='color: #64748b; font-size: 1.1rem;'>CCDR Centro | Gestão de Prazos RJAIA & Simplex</p>
+    </div>
+""", unsafe_allow_html=True)
 
 if FPDF is None:
-    st.error("⚠️ Aviso: A biblioteca 'fpdf' não está instalada. O PDF não será gerado.")
+    st.error("⚠️ Erro: Biblioteca 'fpdf' não detetada.")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 📂 Configuração do Processo")
+    st.markdown("### 📂 Configuração")
     proj_name = st.text_input("Nome do Projeto", "Processo Exemplo 2025")
-    start_date = st.date_input("📅 Data de Instrução (Dia 0)", date(2025, 1, 30))
+    start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 1, 30))
     
     st.markdown("---")
     st.markdown("### ⚖️ Enquadramento")
     selected_typology = st.selectbox("Tipologia", list(TIPOLOGIAS_INFO.keys()))
-    selected_sector = st.selectbox("Setor de Atividade", list(SPECIFIC_LAWS.keys()))
+    selected_sector = st.selectbox("Setor", list(SPECIFIC_LAWS.keys()))
     
     st.markdown("---")
-    st.markdown("### ⚙️ Ajustes")
+    st.markdown("### ⚙️ Opções")
     adjust_weekend = st.checkbox("Ajuste CPA (Fim de Semana)", True)
     
     st.markdown("### 🗓️ Datas Chave")
@@ -414,14 +485,8 @@ with st.sidebar:
     meeting_date_input = st.date_input("Reunião Prévia", value=theo_meeting)
 
     st.markdown("---")
-    st.markdown("### ⏸️ Suspensões (PeA)")
-    
-    # Caixa de informação estilizada
-    st.info("""
-    **Dica para 09/05/2025 (Conf.):**
-    Use Início: **05/03/2025**
-    Fim: **29/04/2025**
-    """)
+    st.markdown("### ⏸️ Suspensões")
+    st.info("Para **09/05/2025** (Conf.):\nInício: **05/03/2025** | Fim: **29/04/2025**")
     
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
@@ -442,7 +507,7 @@ with st.sidebar:
                 st.rerun()
 
 # ==========================================
-# 6. EXECUÇÃO E DASHBOARD
+# 6. DASHBOARD
 # ==========================================
 
 milestones, complementary, total_susp, log_dia = calculate_all_milestones(
@@ -451,30 +516,26 @@ milestones, complementary, total_susp, log_dia = calculate_all_milestones(
 final_date = milestones[-1]["Data Prevista"]
 conformity_date = milestones[1]["Data Prevista"]
 
-# Métricas Principais (Layout Cartões)
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Início Processo", start_date.strftime("%d/%m/%Y"), "Dia 0")
-with col2:
-    st.metric("Suspensões", f"{total_susp} Dias", "Calendário")
-with col3:
-    st.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"), "30 Dias Úteis")
-with col4:
-    st.metric("Limite DIA", final_date.strftime("%d/%m/%Y"), "150 Dias Úteis")
+# Métricas em Cards
+c1, c2, c3, c4 = st.columns(4)
+with c1: st.metric("Início Processo", start_date.strftime("%d/%m/%Y"), "Dia 0")
+with c2: st.metric("Suspensões", f"{total_susp} Dias", "Calendário")
+with c3: st.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"), "30 Dias Úteis")
+with c4: st.metric("Limite DIA", final_date.strftime("%d/%m/%Y"), "150 Dias Úteis")
 
 st.markdown("---")
 
 # Abas de Conteúdo
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela Geral", "📑 Complementares", "📊 Gantt Interativo", "⚖️ Legislação"])
+t1, t2, t3, t4 = st.tabs(["📋 Tabela Geral", "📑 Complementares", "📊 Gantt Interativo", "⚖️ Legislação"])
 
-with tab1:
+with t1:
     df = pd.DataFrame(milestones)
     row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
     df = pd.concat([row0, df], ignore_index=True)
     df["Data Prevista"] = pd.to_datetime(df["Data Prevista"]).dt.strftime("%d-%m-%Y")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True, column_config={"Data Prevista": st.column_config.TextColumn("Data Prevista")})
 
-with tab2:
+with t2:
     if complementary:
         df_comp = pd.DataFrame(complementary)
         df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
@@ -482,8 +543,7 @@ with tab2:
     else:
         st.warning("Prazos complementares indisponíveis.")
 
-with tab3:
-    # Gráfico Plotly para Ecrã (Interativo)
+with t3:
     data_gantt = []
     last = start_date
     for m in milestones:
@@ -502,12 +562,13 @@ with tab3:
         data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
         
     fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", 
-                      color_discrete_map={"Fase Principal": "#1E3A8A", "Suspensão": "#E74C3C", "Consulta Pública": "#4CAF50", "Outros": "#FFC107"},
-                      title="Cronograma do Processo")
+                      color_discrete_map={"Fase Principal": "#2563eb", "Suspensão": "#ef4444", "Consulta Pública": "#22c55e", "Outros": "#eab308"},
+                      title=None)
+    fig.update_layout(xaxis_title="", yaxis_title="", margin=dict(l=10, r=10, t=10, b=10), height=400)
     fig.update_yaxes(autorange="reversed")
     st.plotly_chart(fig, use_container_width=True)
 
-with tab4:
+with t4:
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("#### Legislação Transversal")
@@ -518,10 +579,10 @@ with tab4:
         for k, v in SPECIFIC_LAWS.get(selected_sector, {}).items():
             st.markdown(f"🔸 [{k}]({v})")
 
-# Botão de Download
-st.markdown("### 🖨️ Exportar")
-if st.button("Gerar Relatório PDF Completo"):
-    with st.spinner("A gerar documento..."):
+st.markdown("---")
+# Botão de Download Moderno
+if st.button("📄 Gerar Relatório PDF Oficial"):
+    with st.spinner("A gerar documento PDF..."):
         pdf_bytes = create_pdf(
             proj_name, 
             selected_typology, 
@@ -535,5 +596,4 @@ if st.button("Gerar Relatório PDF Completo"):
         )
         if pdf_bytes:
             st.success("Relatório gerado com sucesso!")
-            st.download_button("📥 Descarregar Relatório PDF", pdf_bytes, "relatorio_aia_completo.pdf", "application/pdf")
-
+            st.download_button("📥 Descarregar PDF", pdf_bytes, "relatorio_aia_oficial.pdf", "application/pdf")
