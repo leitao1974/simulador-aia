@@ -2,14 +2,10 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 import plotly.express as px
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import tempfile
-import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Simulador de Prazos AIA - CCDR Centro",
+    page_title="Simulador de prazos do procedimento AIA",
     page_icon="🌿",
     layout="wide"
 )
@@ -24,7 +20,7 @@ except ImportError:
 # 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
 # ==========================================
 
-# Feriados (Lista completa baseada no seu Excel)
+# Feriados (Lista completa extraída do Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -37,6 +33,7 @@ FERIADOS_STR = [
 ]
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
+# Legislação
 COMMON_LAWS = {
     "RJAIA (DL 151-B/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-116043164",
     "REDE NATURA (DL 140/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34460975",
@@ -45,56 +42,20 @@ COMMON_LAWS = {
 }
 
 SPECIFIC_LAWS = {
-    "1. Agricultura, Silvicultura e Aquicultura": {
-        "ATIVIDADE PECUARIA (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34480678",
-        "GESTAO EFLUENTES (Port. 631/2009)": "https://diariodarepublica.pt/dr/detalhe/portaria/631-2009-518868",
-        "FLORESTAS (DL 16/2009 - PGF)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2009-34488356"
-    },
-    "2. Industria Extrativa (Minas e Pedreiras)": {
-        "MASSAS MINERAIS (DL 270/2001)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2001-34449875",
-        "RESIDUOS DE EXTRACAO (DL 10/2010)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2010-34658745",
-        "SEGURANCA MINAS (DL 162/90)": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/162-1990-417937"
-    },
-    "3. Industria Energetica": {
-        "SISTEMA ELETRICO (DL 15/2022)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2022-177343687",
-        "EMISSOES INDUSTRIAIS (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569",
-        "REFINACAO/COMBUSTIVEIS": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2012-34589012"
-    },
-    "4. Producao e Transformacao de Metais": {
-        "EMISSOES INDUSTRIAIS (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569",
-        "LICENCIAMENTO INDUSTRIAL (SIR)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106567543"
-    },
-    "5. Industria Mineral e Quimica": {
-        "PREVENCAO ACIDENTES GRAVES (SEVESO - DL 150/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106558967",
-        "EMISSOES (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569"
-    },
-    "6. Infraestruturas (Rodovias, Ferrovias, Aeroportos)": {
-        "ESTATUTO ESTRADAS (Lei 34/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2015-34585678",
-        "SERVIDOES AERONAUTICAS (DL 48/2022)": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/48-2022-185799345",
-        "RUIDO GRANDES INFRAESTRUTURAS": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2007-34526556"
-    },
-    "7. Projetos de Engenharia Hidraulica (Barragens, Portos)": {
-        "SEGURANCA BARRAGENS (DL 21/2018)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2018-114833256",
-        "DOMINIO HIDRICO (Lei 54/2005)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2005-34563267"
-    },
-    "8. Tratamento de Residuos e Aguas Residuais": {
-        "RESIDUOS (RGGR - DL 102-D/2020)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2020-150917243",
-        "AGUAS RESIDUAIS URBANAS (DL 152/97)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1997-34512345",
-        "ATERROS (DL 102-D/2020)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2020-150917243"
-    },
-    "9. Projetos Urbanos, Turisticos e Outros": {
-        "RJUE (Urbanizacao - DL 555/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34563452",
-        "EMPREENDIMENTOS TURISTICOS (RJET)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34460567",
-        "ACESSIBILIDADES (DL 163/2006)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2006-34524456"
-    }
+    "1. Agricultura, Silvicultura e Aquicultura": {"ATIVIDADE PECUARIA (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34480678"},
+    "2. Industria Extrativa": {"MASSAS MINERAIS (DL 270/2001)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2001-34449875"},
+    "3. Industria Energetica": {"SISTEMA ELETRICO (DL 15/2022)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2022-177343687"},
+    "6. Infraestruturas": {"ESTATUTO ESTRADAS (Lei 34/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2015-34585678"},
+    "9. Projetos Urbanos": {"RJUE (DL 555/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34563452"}
 }
 
+# --- AQUI ESTAVA O ERRO DE SINTAXE (AGORA CORRIGIDO) ---
 TIPOLOGIAS_INFO = {
     "Anexo I (Competencia CCDR)": "Projetos do Anexo I do RJAIA sob competencia da CCDR.",
     "Anexo II (Limiares ou Zonas Sensiveis)": "Projetos do Anexo II sujeitos a AIA por ultrapassarem limiares ou localizacao em zona sensivel.",
     "Anexo II (Resultante de Triagem/Caso a Caso)": "Projetos sujeitos a AIA na sequencia de decisao de sujeicao (Triagem) positiva emitida pela CCDR.",
     "Alteracao ou Ampliacao (Competencia CCDR)": "Alteracoes a projetos existentes (Anexo I ou II) da competencia da CCDR.",
-    "RECAPE (Pos-DIA CCDR)": "Verificacao conformidade ambiental (RECAPE) decorrente de DIA da CCDR."
+    "RECAPE (Pos-DIA CCDR)": "Verificacao conformidade ambiental (RECAPE) decorrente de uma DIA emitida pela CCDR."
 }
 
 # ==========================================
@@ -102,13 +63,11 @@ TIPOLOGIAS_INFO = {
 # ==========================================
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex) E não é feriado."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis a uma data (Simples)."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -118,21 +77,18 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
-    """Verifica se data está em suspensão."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
 def is_business_day_rigorous(check_date, suspensions):
-    """Dia útil para contagem (exclui suspensões)."""
     if is_suspended(check_date, suspensions): return False
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
-    """Conta dias úteis um a um."""
     current_date = start_date
     days_counted = 0
     log = []
@@ -167,7 +123,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
     return final_date
 
 def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, adjust_weekend=True):
-    # Marcos Principais (Ajustados ao Excel)
+    # AJUSTE: Prazos específicos detetados no ficheiro 2025 (PTF=100, Aud=120)
     milestones_def = [
         {"dias": 9,   "fase": "Data Reunião", "manual": True},
         {"dias": 30,  "fase": "Limite Conformidade", "manual": False},
@@ -195,13 +151,14 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
             
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
-    # --- MARCOS COMPLEMENTARES ---
+    # Marcos Complementares (Ajustados ao Excel 2025)
     complementary = []
     if conf_date:
         cp_start = add_business_days(conf_date, 5)
         cp_end = add_business_days(cp_start, 30)
         cp_report = add_business_days(cp_end, 7)
         visit_date = add_business_days(cp_start, 15)
+        # No Excel 2025, Pareceres são 23 dias úteis após INÍCIO DA CP
         external_ops = add_business_days(cp_start, 23)
         
         complementary = [
@@ -283,7 +240,8 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
     pdf.cell(40, 8, "Data", 1, 1, 'C', 1)
     pdf.set_font("Arial", "", 10)
 
-    pdf.cell(90, 8, "Entrada do Processo / Instrucao", 1, 0, 'L')
+    # Linha Entrada
+    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
 
@@ -293,6 +251,7 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
         pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
 
+    # Complementares
     if complementary:
         pdf.ln(2)
         pdf.set_font("Arial", "I", 9)
@@ -313,77 +272,6 @@ def create_pdf(project_name, typology, sector, start_date, milestones, complemen
             dur = (s['end'] - s['start']).days + 1
             pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
             
-    # --- NOVO: GERAR GRÁFICO GANTT COMO IMAGEM E INSERIR ---
-    # Usando Matplotlib para compatibilidade com FPDF (Plotly não exporta estático facilmente no Streamlit Cloud sem kaleido)
-    try:
-        import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
-        
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 10, "3. Cronograma Visual (Gantt)", 0, 1)
-        
-        # Preparar dados para Matplotlib
-        tasks = []
-        start_dates = []
-        end_dates = []
-        colors = []
-        
-        # Fases Principais
-        last = start_date
-        for m in milestones:
-            end = m["Data Prevista"]
-            start = last if last < end else end
-            tasks.append(m["Etapa"])
-            start_dates.append(start)
-            end_dates.append(end)
-            colors.append('skyblue')
-            last = end
-            
-        # Suspensões
-        for s in suspensions:
-            tasks.append("Suspensão")
-            start_dates.append(s['start'])
-            end_dates.append(s['end'])
-            colors.append('salmon')
-
-        if tasks:
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            # Criar barras horizontais
-            for i, task in enumerate(tasks):
-                start = mdates.date2num(start_dates[i])
-                end = mdates.date2num(end_dates[i])
-                duration = end - start
-                ax.barh(task, duration, left=start, color=colors[i], align='center', edgecolor='grey')
-                
-            ax.xaxis_date()
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%Y'))
-            plt.xticks(rotation=45)
-            plt.grid(axis='x', linestyle='--', alpha=0.7)
-            plt.tight_layout()
-            
-            # Salvar temporariamente
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                plt.savefig(tmp_file.name, dpi=100)
-                tmp_path = tmp_file.name
-            
-            # Inserir no PDF
-            pdf.image(tmp_path, x=10, y=30, w=190)
-            
-            # Limpar
-            plt.close(fig)
-            try:
-                import os
-                os.remove(tmp_path)
-            except:
-                pass
-                
-    except Exception as e:
-        pdf.ln(5)
-        pdf.set_font("Arial", "I", 10)
-        pdf.cell(0, 10, f"Nota: Grafico indisponivel ({str(e)})", 0, 1)
-
     return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
@@ -397,14 +285,17 @@ if FPDF is None:
 
 with st.sidebar:
     st.header("📂 Dados do Processo")
-    proj_name = st.text_input("Nome do Projeto", "Processo 2025")
+    proj_name = st.text_input("Nome do Projeto", "Processo Exemplo 2025")
+    
+    # DATA CORRETA: 30/01/2025
     start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 1, 30))
     
     st.markdown("---")
     st.subheader("⚖️ Enquadramento")
     selected_typology = st.selectbox("Tipologia", list(TIPOLOGIAS_INFO.keys()))
     selected_sector = st.selectbox("Setor", list(SPECIFIC_LAWS.keys()))
-    
+    st.caption(f"ℹ️ {TIPOLOGIAS_INFO[selected_typology]}")
+
     st.markdown("---")
     st.subheader("⚙️ Configuração")
     adjust_weekend = st.checkbox("Ajustar termo ao dia útil (CPA)?", True)
@@ -415,12 +306,14 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏸️ Suspensões")
-    st.info("Para 09/05/2025 (Conformidade): Início 05/03/2025 | Fim 29/04/2025.")
+    
+    st.info("Nota: Para obter 09/05/2025 na Conformidade, use Início 05/03/2025 e Fim 29/04/2025.")
     
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
+        # CALIBRAÇÃO 
         s_s = c1.date_input("Início", date(2025, 3, 5))
         s_e = c2.date_input("Fim", date(2025, 4, 29))
         if st.form_submit_button("Adicionar"):
@@ -451,7 +344,7 @@ c2.metric("Suspensões", f"{total_susp} dias")
 c3.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"))
 c4.metric("Limite DIA", final_date.strftime("%d/%m/%Y"))
 
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela", "📅 Cronograma", "📚 Legislação", "🔍 Auditoria"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complementares", "📅 Cronograma", "🔍 Auditoria"])
 
 with tab1:
     df = pd.DataFrame(milestones)
@@ -461,6 +354,14 @@ with tab1:
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 with tab2:
+    if complementary:
+        df_comp = pd.DataFrame(complementary)
+        df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
+        st.dataframe(df_comp, use_container_width=True)
+    else:
+        st.write("Sem prazos complementares.")
+
+with tab3:
     data_gantt = []
     last = start_date
     for m in milestones:
@@ -480,14 +381,6 @@ with tab2:
     fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", 
                       color_discrete_map={"Fase Principal": "#2E86C1", "Suspensão": "#E74C3C", "Consulta Pública": "#27AE60", "Outros": "#F1C40F"})
     st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
-    st.write(f"**Setor:** {selected_sector}")
-    for k,v in SPECIFIC_LAWS.get(selected_sector, {}).items():
-        st.markdown(f"- [{k}]({v})")
-    st.write("**Transversal:**")
-    for k,v in COMMON_LAWS.items():
-        st.markdown(f"- [{k}]({v})")
 
 with tab4:
     st.markdown("### Auditoria de Contagem Diária")
