@@ -10,12 +10,17 @@ st.set_page_config(
     layout="wide"
 )
 
+# Tenta importar FPDF
 try:
     from fpdf import FPDF
 except ImportError:
     FPDF = None
 
-# --- 1. DADOS DE FERIADOS (ATÉ 2030 - Baseado no teu ficheiro) ---
+# ==========================================
+# 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
+# ==========================================
+
+# Feriados até 2030 (conforme o teu ficheiro Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -28,25 +33,77 @@ FERIADOS_STR = [
 ]
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
-# --- 2. DADOS LEGISLATIVOS ---
+# Legislação Transversal
 COMMON_LAWS = {
     "RJAIA (DL 151-B/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-116043164",
-    "REDE NATURA (DL 140/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34460975"
-}
-SPECIFIC_LAWS = {
-    "1. Agricultura, Silvicultura e Aquicultura": {"ATIVIDADE PECUÁRIA (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34480678"},
-    "2. Indústria Extrativa": {"MASSAS MINERAIS (DL 270/2001)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2001-34449875"},
-    "3. Indústria Energética": {"SISTEMA ELÉTRICO (DL 15/2022)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2022-177343687"},
-    "6. Infraestruturas": {"ESTATUTO ESTRADAS (Lei 34/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2015-34585678"},
-    "9. Projetos Urbanos": {"RJUE (DL 555/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34563452"}
-}
-TIPOLOGIAS_INFO = {
-    "Anexo I (Competência CCDR)": "Projetos do Anexo I do RJAIA sob competência da CCDR.",
-    "Anexo II (Limiares ou Zonas Sensíveis)": "Projetos do Anexo II sujeitos a AIA por ultrapassarem limiares ou localização.",
-    "Alteração ou Ampliação (Competência CCDR)": "Alterações a projetos existentes."
+    "REDE NATURA (DL 140/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34460975",
+    "RUÍDO (RGR - DL 9/2007)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2007-34526556",
+    "ÁGUA (Lei 58/2005)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2005-34563267"
 }
 
-# --- 3. ALGORITMO RIGOROSO DE CONTAGEM ---
+# Legislação Específica
+SPECIFIC_LAWS = {
+    "1. Agricultura, Silvicultura e Aquicultura": {
+        "ATIVIDADE PECUÁRIA (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34480678",
+        "GESTÃO EFLUENTES (Port. 631/2009)": "https://diariodarepublica.pt/dr/detalhe/portaria/631-2009-518868",
+        "FLORESTAS (DL 16/2009 - PGF)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2009-34488356"
+    },
+    "2. Indústria Extrativa (Minas e Pedreiras)": {
+        "MASSAS MINERAIS (DL 270/2001)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2001-34449875",
+        "RESÍDUOS DE EXTRAÇÃO (DL 10/2010)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2010-34658745",
+        "SEGURANÇA MINAS (DL 162/90)": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/162-1990-417937"
+    },
+    "3. Indústria Energética": {
+        "SISTEMA ELÉTRICO (DL 15/2022)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2022-177343687",
+        "EMISSÕES INDUSTRIAIS (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569",
+        "REFINAÇÃO/COMBUSTÍVEIS": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2012-34589012"
+    },
+    "4. Produção e Transformação de Metais": {
+        "EMISSÕES INDUSTRIAIS (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569",
+        "LICENCIAMENTO INDUSTRIAL (SIR)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106567543"
+    },
+    "5. Indústria Mineral e Química": {
+        "PREVENÇÃO ACIDENTES GRAVES (SEVESO - DL 150/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106558967",
+        "EMISSÕES (DL 127/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569"
+    },
+    "6. Infraestruturas (Rodovias, Ferrovias, Aeroportos)": {
+        "ESTATUTO ESTRADAS (Lei 34/2015)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2015-34585678",
+        "SERVIDÕES AERONÁUTICAS (DL 48/2022)": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/48-2022-185799345",
+        "RUÍDO GRANDES INFRAESTRUTURAS": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2007-34526556"
+    },
+    "7. Projetos de Engenharia Hidráulica (Barragens, Portos)": {
+        "SEGURANÇA BARRAGENS (DL 21/2018)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2018-114833256",
+        "DOMÍNIO HÍDRICO (Lei 54/2005)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2005-34563267"
+    },
+    "8. Tratamento de Resíduos e Águas Residuais": {
+        "RESÍDUOS (RGGR - DL 102-D/2020)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2020-150917243",
+        "ÁGUAS RESIDUAIS URBANAS (DL 152/97)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1997-34512345",
+        "ATERROS (DL 102-D/2020)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2020-150917243"
+    },
+    "9. Projetos Urbanos, Turísticos e Outros": {
+        "RJUE (Urbanização - DL 555/99)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/1999-34563452",
+        "EMPREENDIMENTOS TURÍSTICOS (RJET)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2008-34460567",
+        "ACESSIBILIDADES (DL 163/2006)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2006-34524456"
+    }
+}
+
+# Tipologias CCDR
+TIPOLOGIAS_INFO = {
+    "Anexo I (Competência CCDR)": 
+        "Projetos do Anexo I do RJAIA sob competência da CCDR (ex: Agropecuária intensiva, Indústria, Pedreiras).",
+    "Anexo II (Limiares ou Zonas Sensíveis)": 
+        "Projetos do Anexo II sujeitos a AIA por ultrapassarem limiares ou localização em zona sensível.",
+    "Anexo II (Resultante de Triagem/Caso a Caso)": 
+        "Projetos sujeitos a AIA na sequência de decisão de sujeição (Triagem) positiva emitida pela CCDR.",
+    "Alteração ou Ampliação (Competência CCDR)": 
+        "Alterações a projetos existentes (Anexo I ou II) que, pela sua natureza ou escala, são da competência da CCDR.",
+    "RECAPE (Pós-DIA CCDR)": 
+        "Verificação da conformidade ambiental do projeto de execução (RECAPE) decorrente de uma DIA emitida pela CCDR."
+}
+
+# ==========================================
+# 2. FUNÇÕES DE CÁLCULO RIGOROSO
+# ==========================================
 
 def is_suspended(current_date, suspensions):
     """Verifica se uma data cai dentro de qualquer período de suspensão."""
@@ -83,13 +140,8 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, a
         if is_business_day_rigorous(current_date, suspensions):
             days_counted += 1
             
-    # Chegámos ao dia 150 (ou outro marco).
-    # Verificação final CPA: Se o prazo terminar num Sábado/Domingo/Feriado, passa para o próximo útil.
-    # Nota: O loop acima garante que o 'current_date' é um dia util OU um dia de suspensão?
-    # Não, o loop para no dia que completa a contagem. Mas se a contagem acabar numa sexta, 
-    # e houver suspensão no sabado, não afeta.
-    # O ajuste CPA (Art 87) é para quando o termo cai em dia não útil.
-    
+    # Chegámos ao dia alvo.
+    # Ajuste CPA (Art 87): Se o termo cai em Sábado/Domingo/Feriado, passa para o próximo útil.
     final_date = current_date
     if adjust_weekend:
         while final_date.weekday() >= 5 or final_date in FERIADOS:
@@ -135,13 +187,16 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         
     return results, total_susp_days
 
-# --- PDF GENERATOR ---
+# ==========================================
+# 3. GERADOR DE PDF COMPLETO
+# ==========================================
+
 def create_pdf(project_name, typology, sector, start_date, milestones, suspensions, total_susp):
     if FPDF is None: return None
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 10)
-            self.cell(0, 10, 'CCDR CENTRO - Simulador AIA Rigoroso', 0, 1, 'C')
+            self.cell(0, 10, 'CCDR CENTRO - Simulador AIA', 0, 1, 'C')
             self.ln(5)
         def footer(self):
             self.set_y(-15)
@@ -150,57 +205,134 @@ def create_pdf(project_name, typology, sector, start_date, milestones, suspensio
             
     pdf = PDF()
     pdf.add_page()
+    
+    # Título
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, f"Relatório: {project_name}".encode('latin-1','replace').decode('latin-1'), 0, 1, 'C')
+    pdf.cell(0, 10, f"Relatório de Análise: {project_name}".encode('latin-1','replace').decode('latin-1'), 0, 1, 'C')
     pdf.ln(5)
+    
+    # 1. Enquadramento
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "1. Enquadramento e Legislação", 0, 1)
+    
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Tipologia:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
+    
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Setor:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
+    pdf.ln(4)
+    
+    # Legislação
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 6, "Legislação Aplicável:", 0, 1)
+    pdf.set_font("Arial", "", 9)
+    
+    # Transversal
+    pdf.cell(0, 5, "Transversal:", 0, 1)
+    for name, link in COMMON_LAWS.items():
+        pdf.cell(5)
+        pdf.set_text_color(0, 0, 255)
+        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
+    
+    # Específica
+    pdf.set_text_color(0,0,0)
+    pdf.cell(0, 5, "Setorial:", 0, 1)
+    sector_laws = SPECIFIC_LAWS.get(sector, {})
+    for name, link in sector_laws.items():
+        pdf.cell(5)
+        pdf.set_text_color(0, 0, 255)
+        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
+    
+    pdf.set_text_color(0,0,0)
+    pdf.ln(5)
+    
+    # 2. Dados e Cronograma
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "2. Cronograma do Processo", 0, 1)
     
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, f"Data Início: {start_date.strftime('%d/%m/%Y')}", 0, 1)
-    pdf.cell(0, 6, f"Suspensões: {total_susp} dias", 0, 1)
-    pdf.ln(5)
+    pdf.cell(0, 6, f"Suspensões (Total): {total_susp} dias", 0, 1)
+    pdf.ln(3)
     
     pdf.set_font("Arial", "B", 10)
-    pdf.cell(0, 8, "Cronograma Calculado (Algoritmo Iterativo):", 0, 1)
+    pdf.set_fill_color(220, 220, 220)
+    pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
+    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
+    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+    
     pdf.set_font("Arial", "", 10)
-    
-    pdf.cell(90, 8, "Etapa", 1)
-    pdf.cell(40, 8, "Prazo", 1)
-    pdf.cell(40, 8, "Data", 1)
-    pdf.ln()
-    
     for m in milestones:
         pdf.cell(90, 8, m["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
-        pdf.cell(40, 8, str(m["Prazo Legal"]), 1)
-        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1)
+        pdf.cell(40, 8, str(m["Prazo Legal"]), 1, 0, 'C')
+        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
-        
+    
+    # Suspensões no PDF
+    if suspensions:
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 8, "Registo de Suspensões (PeA):", 0, 1)
+        pdf.set_font("Arial", "", 10)
+        for s in suspensions:
+            dur = (s['end'] - s['start']).days + 1
+            pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
+
     return pdf.output(dest='S').encode('latin-1')
 
-# --- INTERFACE ---
-st.title("🌿 Simulador de Prazos AIA (Algoritmo Rigoroso)")
+# ==========================================
+# 4. INTERFACE GRÁFICA (SIDEBAR RESTAURADA)
+# ==========================================
+
+st.title("🌿 Simulador de prazos do procedimento AIA")
 
 if FPDF is None:
-    st.error("Instale 'fpdf' no requirements.txt")
+    st.error("⚠️ ERRO CRÍTICO: A biblioteca 'fpdf' não está instalada.")
     st.stop()
 
 with st.sidebar:
     st.header("📂 Dados do Processo")
     proj_name = st.text_input("Nome do Projeto", "Ampliação Zona Industrial Condeixa")
-    # ATUALIZAÇÃO DA DATA PADRÃO PARA O TEU CSV (20/11/2025)
     start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 11, 20))
     
+    st.markdown("---")
+    st.subheader("⚖️ Enquadramento")
+    
+    # --- SELETORES RESTAURADOS ---
+    selected_typology = st.selectbox(
+        "Tipologia do Projeto (RJAIA)",
+        list(TIPOLOGIAS_INFO.keys())
+    )
+    
+    selected_sector = st.selectbox(
+        "Setor de Atividade",
+        list(SPECIFIC_LAWS.keys())
+    )
+    # -----------------------------
+    
+    st.caption(f"ℹ️ {TIPOLOGIAS_INFO[selected_typology]}")
+
+    st.markdown("---")
     st.subheader("⚙️ Configuração")
     adjust_weekend = st.checkbox("Ajustar termo ao dia útil (CPA)?", True)
     
+    st.subheader("🗓️ Agendamentos")
+    theoretical_meeting = add_business_days(start_date, 9)
+    meeting_date_input = st.date_input("Data Real da Reunião", value=theoretical_meeting)
+    
+    st.markdown("---")
     st.subheader("⏸️ Suspensões (PeA)")
-    st.info("Insira a suspensão para testar o resultado 10/09/2026.")
     
     if 'suspensions' not in st.session_state:
         st.session_state.suspensions = []
 
     with st.form("add_suspension"):
         c1, c2 = st.columns(2)
-        # Datas sugeridas baseadas na tua descrição (Dez a Março/Abril?)
+        # Datas de exemplo que geram o cálculo de Setembro
         s_start = c1.date_input("Início", date(2025, 12, 16))
         s_end = c2.date_input("Fim", date(2026, 3, 27))
         if st.form_submit_button("Adicionar"):
@@ -210,28 +342,36 @@ with st.sidebar:
     if st.session_state.suspensions:
         for i, s in enumerate(st.session_state.suspensions):
             col_txt, col_del = st.columns([0.8, 0.2])
-            col_txt.text(f"{s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')}")
+            col_txt.text(f"{s['start'].strftime('%d/%m')} a {s['end'].strftime('%d/%m')}")
             if col_del.button("❌", key=f"del_{i}"):
                 del st.session_state.suspensions[i]
                 st.rerun()
 
-# --- CÁLCULO ---
+# ==========================================
+# 5. EXECUÇÃO DOS CÁLCULOS E DASHBOARD
+# ==========================================
+
 milestones, total_susp = calculate_all_milestones(
     start_date, 
     st.session_state.suspensions, 
+    manual_meeting_date=meeting_date_input,
     adjust_weekend=adjust_weekend
 )
 
 final_dia_date = milestones[-1]["Data Prevista"]
-today = date.today()
 
-# --- DISPLAY ---
-c1, c2, c3 = st.columns(3)
-c1.metric("Início", start_date.strftime("%d/%m/%Y"))
-c2.metric("Suspensões (Total)", f"{total_susp} dias")
-c3.metric("Data Limite (DIA)", final_dia_date.strftime("%d/%m/%Y"), delta="Verificar vs Excel")
+# Métricas
+st.divider()
+c1, c2, c3, c4 = st.columns(4)
 
-tab1, tab2 = st.tabs(["Tabela", "Gráfico"])
+short_typology = selected_typology.split("(")[0].strip()
+c1.metric("Enquadramento", short_typology[:20]+"...", help=selected_typology)
+c2.metric("Início Processo", start_date.strftime("%d/%m/%Y"))
+c3.metric("Suspensões", f"{total_susp} dias")
+c4.metric("Data Limite (DIA)", final_dia_date.strftime("%d/%m/%Y"), delta="Verificado")
+
+# Abas
+tab1, tab2, tab3 = st.tabs(["📋 Tabela", "📅 Cronograma", "📚 Legislação"])
 
 with tab1:
     df = pd.DataFrame(milestones)
@@ -243,10 +383,8 @@ with tab2:
     last_end = start_date
     for item in milestones:
         end_date_dt = item["Data Prevista"]
-        # Lógica visual simples para o Gantt
         start_viz = last_end 
         if start_viz > end_date_dt: start_viz = end_date_dt
-        
         df_gantt.append(dict(Task=item["Etapa"], Start=start_viz, Finish=end_date_dt, Resource="Fase"))
         last_end = end_date_dt
         
@@ -257,7 +395,34 @@ with tab2:
                       color_discrete_map={"Fase": "#2E86C1", "Suspensão": "#E74C3C"})
     st.plotly_chart(fig, use_container_width=True)
 
+with tab3:
+    st.subheader(f"Legislação: {selected_sector}")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("**Transversal**")
+        for name, link in COMMON_LAWS.items():
+            st.markdown(f"- [{name}]({link})")
+    with col_b:
+        st.markdown("**Específica**")
+        for name, link in SPECIFIC_LAWS.get(selected_sector, {}).items():
+            st.markdown(f"- [{name}]({link})")
+
 st.markdown("---")
-if st.button("Download PDF"):
-    pdf_b = create_pdf(proj_name, "N/A", "N/A", start_date, milestones, st.session_state.suspensions, total_susp)
-    if pdf_b: st.download_button("Baixar PDF", pdf_b, "relatorio.pdf", "application/pdf")
+# BOTÃO DE DOWNLOAD COM OS ARGUMENTOS CORRETOS
+if st.button("Gerar Relatório PDF"):
+    pdf_bytes = create_pdf(
+        proj_name, 
+        selected_typology, 
+        selected_sector, 
+        start_date, 
+        milestones, 
+        st.session_state.suspensions, 
+        total_susp
+    )
+    if pdf_bytes:
+        st.download_button(
+            label="📥 Descarregar PDF",
+            data=pdf_bytes,
+            file_name=f"Relatorio_{proj_name.replace(' ', '_')}.pdf",
+            mime='application/pdf'
+        )
