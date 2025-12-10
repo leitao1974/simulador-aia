@@ -39,6 +39,23 @@ COMMON_LAWS = {
     "CPA (Prazos)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2015-106558838"
 }
 
+# Tipologias e Setores (Reintroduzidos para o Relatório)
+TIPOLOGIAS_INFO = {
+    "Anexo I (Competência CCDR)": "Projetos do Anexo I do RJAIA sob competência da CCDR.",
+    "Anexo II (Limiares ou Zonas Sensíveis)": "Projetos do Anexo II sujeitos a AIA por ultrapassarem limiares ou localização em zona sensível.",
+    "Alteração ou Ampliação": "Alterações a projetos existentes.",
+    "AIA Simplificado": "Procedimento simplificado nos termos do Simplex."
+}
+
+SPECIFIC_LAWS = {
+    "Indústria Extrativa": {"DL 270/2001 (Massas Minerais)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2001-34449875"},
+    "Indústria Transformadora": {"DL 127/2013 (Emissões Industriais)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34789569"},
+    "Agropecuária": {"DL 81/2013 (NREAP)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-34763567"},
+    "Energia": {"DL 15/2022 (Sistema Elétrico)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2022-177343687"},
+    "Infraestruturas": {"Lei 34/2015 (Estatuto Estradas)": "https://diariodarepublica.pt/dr/legislacao-consolidada/lei/2015-34585678"},
+    "Outros": {}
+}
+
 # ==========================================
 # 2. FUNÇÕES DE CÁLCULO RIGOROSO (MOTOR)
 # ==========================================
@@ -163,9 +180,9 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
     return results, complementary, total_susp, log_final
 
 # ==========================================
-# 3. GERADOR DE PDF
+# 3. GERADOR DE PDF (ATUALIZADO)
 # ==========================================
-def create_pdf(project_name, regime, start_date, milestones, complementary, suspensions, total_susp):
+def create_pdf(project_name, typology, sector, regime, start_date, milestones, complementary, suspensions, total_susp):
     if FPDF is None: return None
     class PDF(FPDF):
         def header(self):
@@ -182,25 +199,58 @@ def create_pdf(project_name, regime, start_date, milestones, complementary, susp
     
     # Título
     pdf.set_font("Arial", "B", 14)
-    safe_title = f"Simulacao de Prazos: {project_name}"
+    safe_title = f"Relatorio de Prazos: {project_name}"
     pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='C')
     pdf.ln(5)
 
-    # Resumo
+    # 1. Enquadramento Legal
     pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "Resumo do Processo", 0, 1)
+    pdf.cell(0, 8, "1. Enquadramento Legal e Setorial", 0, 1)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Tipologia:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Setor:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
+    pdf.ln(2)
+    
+    # 2. Resumo do Processo
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "2. Resumo do Processo", 0, 1)
     pdf.set_font("Arial", "", 10)
     pdf.cell(50, 6, "Regime Aplicavel:", 0, 0)
-    pdf.cell(0, 6, f"{regime} dias uteis", 0, 1)
+    pdf.cell(0, 6, f"{regime}", 0, 1)
     pdf.cell(50, 6, "Data de Instrucao:", 0, 0)
     pdf.cell(0, 6, start_date.strftime('%d/%m/%Y'), 0, 1)
     pdf.cell(50, 6, "Total Suspensao:", 0, 0)
     pdf.cell(0, 6, f"{total_susp} dias de calendario", 0, 1)
     pdf.ln(5)
 
-    # Tabela Principal
+    # 3. Legislação de Referência
     pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "Cronograma Principal", 0, 1)
+    pdf.cell(0, 8, "3. Legislacao de Referencia", 0, 1)
+    pdf.set_font("Arial", "", 9)
+    # Transversal
+    pdf.cell(0, 5, "Transversal:", 0, 1)
+    for name, link in COMMON_LAWS.items():
+        pdf.cell(5)
+        pdf.set_text_color(0, 0, 255)
+        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
+    # Setorial
+    pdf.set_text_color(0,0,0)
+    pdf.cell(0, 5, f"Setorial ({sector}):", 0, 1)
+    for name, link in SPECIFIC_LAWS.get(sector, {}).items():
+        pdf.cell(5)
+        pdf.set_text_color(0, 0, 255)
+        pdf.cell(0, 5, f"- {name}".encode('latin-1','replace').decode('latin-1'), link=link, ln=1)
+    pdf.set_text_color(0,0,0)
+    pdf.ln(5)
+
+    # 4. Cronograma Oficial
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "4. Cronograma Oficial (Previsao)", 0, 1)
     pdf.set_font("Arial", "B", 9)
     pdf.set_fill_color(220, 220, 220)
     pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
@@ -219,15 +269,11 @@ def create_pdf(project_name, regime, start_date, milestones, complementary, susp
         pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
         pdf.ln()
 
-    # Tabela Complementar
+    # Complementares
     if complementary:
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, "Prazos Complementares (Consulta Publica)", 0, 1)
-        pdf.set_font("Arial", "B", 9)
-        pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Referencia", 1, 0, 'C', 1)
-        pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+        pdf.ln(2)
+        pdf.set_font("Arial", "I", 9)
+        pdf.cell(0, 6, "Fases Complementares (Consulta Publica e Pareceres)", 0, 1)
         pdf.set_font("Arial", "", 9)
         for c in complementary:
             pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
@@ -264,7 +310,11 @@ with st.sidebar:
     start_date = st.date_input("Data de Instrução (Dia 0)", date.today())
     
     st.markdown("---")
-    st.subheader("⚖️ Regime Legal")
+    st.subheader("⚖️ Enquadramento")
+    
+    # NOVOS SELETORES PARA O RELATÓRIO
+    selected_typology = st.selectbox("Tipologia do Projeto", list(TIPOLOGIAS_INFO.keys()))
+    selected_sector = st.selectbox("Setor de Atividade", list(SPECIFIC_LAWS.keys()))
     
     # SELETOR DE REGIME
     regime_option = st.radio(
@@ -356,6 +406,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complem
 
 with tab1:
     df_main = pd.DataFrame(milestones)
+    # Adicionar linha inicial
     row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
     df_main = pd.concat([row0, df_main], ignore_index=True)
     df_main["Data Prevista"] = pd.to_datetime(df_main["Data Prevista"]).dt.strftime("%d-%m-%Y")
@@ -371,14 +422,18 @@ with tab2:
         st.info("Prazos complementares indisponíveis.")
 
 with tab3:
+    # Gantt
     data_gantt = []
     last = start_date
+    
+    # Fases Principais
     for m in milestones:
         end = m["Data Prevista"]
         start = last if last < end else end
         data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
         last = end
     
+    # Fases Complementares (Sobrepostas)
     for c in complementary:
         if "Consulta" in c["Etapa"]:
             end_c = c["Data"]
@@ -387,6 +442,7 @@ with tab3:
         else:
             data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
             
+    # Suspensões
     for s in st.session_state.suspensions_universal:
         data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
         
@@ -396,13 +452,20 @@ with tab3:
 
 with tab4:
     st.markdown("### Legislação de Referência")
+    st.write("**Transversal:**")
     for k, v in COMMON_LAWS.items():
+        st.markdown(f"- [{k}]({v})")
+    
+    st.write(f"**Específica ({selected_sector}):**")
+    for k, v in SPECIFIC_LAWS.get(selected_sector, {}).items():
         st.markdown(f"- [{k}]({v})")
 
 st.markdown("---")
 if st.button("Gerar Relatório PDF"):
     pdf_bytes = create_pdf(
         proj_name, 
+        selected_typology,
+        selected_sector,
         f"Regime {regime_option} Dias", 
         start_date, 
         milestones, 
