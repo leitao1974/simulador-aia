@@ -10,16 +10,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Tenta importar FPDF
 try:
     from fpdf import FPDF
 except ImportError:
     FPDF = None
 
 # ==========================================
-# 1. DADOS DE BASE (FERIADOS E LEGISLAÇÃO)
+# 1. DADOS DE BASE (FERIADOS ATÉ 2030)
 # ==========================================
-
-# Feriados (Lista completa extraída do seu ficheiro Excel)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -98,13 +97,11 @@ TIPOLOGIAS_INFO = {
 # ==========================================
 
 def is_business_day(check_date):
-    """Verifica se é dia útil (seg-sex) E não é feriado."""
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def add_business_days(start_date, num_days):
-    """Adiciona dias úteis a uma data (Simples)."""
     current_date = start_date
     added_days = 0
     while added_days < num_days:
@@ -114,21 +111,18 @@ def add_business_days(start_date, num_days):
     return current_date
 
 def is_suspended(current_date, suspensions):
-    """Verifica se data está em suspensão."""
     for s in suspensions:
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
 def is_business_day_rigorous(check_date, suspensions):
-    """Dia útil para contagem (exclui suspensões)."""
     if is_suspended(check_date, suspensions): return False
     if check_date.weekday() >= 5: return False
     if check_date in FERIADOS: return False
     return True
 
 def calculate_deadline_rigorous(start_date, target_business_days, suspensions, adjust_weekend=True, return_log=False):
-    """Conta dias úteis um a um."""
     current_date = start_date
     days_counted = 0
     log = []
@@ -171,23 +165,23 @@ def calculate_all_milestones(start_date, suspensions, manual_meeting_date=None, 
         {"dias": 150, "fase": "Emissão da DIA (Decisão Final)", "manual": False}
     ]
     results = []
-    log_dia = []
+    log_conf = [] # Log Conformidade (30 dias)
     
     for m in milestones_def:
         if m["manual"] and manual_meeting_date:
             final_date = manual_meeting_date
             display = "Manual"
         else:
-            if m["dias"] == 150: 
+            if m["dias"] == 30: 
                 final_date, log_data = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend, return_log=True)
-                log_dia = log_data
+                log_conf = log_data
             else:
                 final_date = calculate_deadline_rigorous(start_date, m["dias"], suspensions, adjust_weekend)
             display = f"{m['dias']} dias úteis"
         results.append({"Etapa": m["fase"], "Prazo Legal": display, "Data Prevista": final_date})
     
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
-    return results, total_susp, log_dia
+    return results, total_susp, log_conf
 
 # ==========================================
 # 3. PDF
@@ -289,8 +283,9 @@ if FPDF is None:
 
 with st.sidebar:
     st.header("📂 Dados do Processo")
-    proj_name = st.text_input("Nome do Projeto", "Ampliação Zona Industrial Condeixa")
-    start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 11, 20))
+    proj_name = st.text_input("Nome do Projeto", "Processo Exemplo 2025")
+    # DATA INICIAL AJUSTADA AO NOVO FICHEIRO (30/01/2025)
+    start_date = st.date_input("Data de Instrução (Dia 0)", date(2025, 1, 30))
     
     st.markdown("---")
     st.subheader("⚖️ Enquadramento")
@@ -308,13 +303,23 @@ with st.sidebar:
 
     st.markdown("---")
     st.subheader("⏸️ Suspensões")
+    
+    # MENSAGEM EXPLICATIVA SOBRE A DISCREPÂNCIA DO EXCEL
+    st.info("""
+    **Nota sobre Diferenças no Excel:** O ficheiro carregado considera que a suspensão inicia em **05/03/2025** (e não no envio do pedido em 20/02) 
+    e termina a **30/04/2025** (2 dias após a resposta). 
+    Use estas datas para obter o resultado **09/05/2025**.
+    """)
+    
     if 'suspensions' not in st.session_state: st.session_state.suspensions = []
     
     with st.form("add_susp"):
         c1, c2 = st.columns(2)
-        # CALIBRAÇÃO EXATA BASEADA NO SEU FICHEIRO (Data Fim 11/03/2026)
-        s_s = c1.date_input("Início", date(2025, 12, 27))
-        s_e = c2.date_input("Fim", date(2026, 3, 11))
+        # CALIBRAÇÃO PARA O NOVO FICHEIRO: 
+        # Início: 05/03/2025 (Data Prevista no Excel)
+        # Fim: 30/04/2025 (Para bater 09/05/2025 na conformidade)
+        s_s = c1.date_input("Início", date(2025, 3, 5))
+        s_e = c2.date_input("Fim", date(2025, 4, 30))
         if st.form_submit_button("Adicionar"):
             st.session_state.suspensions.append({'start': s_s, 'end': s_e})
             st.rerun()
@@ -330,7 +335,7 @@ with st.sidebar:
 # ==========================================
 # 5. EXECUÇÃO
 # ==========================================
-milestones, total_susp, log_dia = calculate_all_milestones(
+milestones, total_susp, log_conf = calculate_all_milestones(
     start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
 )
 final_date = milestones[-1]["Data Prevista"]
@@ -374,9 +379,9 @@ with tab3:
         st.markdown(f"- [{k}]({v})")
 
 with tab4:
-    st.markdown("### Auditoria de Contagem Diária (150 Dias)")
-    st.write("Verifique como cada dia foi contado até chegar a 10/09/2026.")
-    df_log = pd.DataFrame(log_dia)
+    st.markdown("### Auditoria de Contagem Diária (Conformidade - 30 Dias)")
+    st.write("Verifique dia-a-dia como o sistema contou os 30 dias úteis.")
+    df_log = pd.DataFrame(log_conf)
     df_log["Data"] = pd.to_datetime(df_log["Data"]).dt.strftime("%d-%m-%Y")
     st.dataframe(df_log, use_container_width=True)
 
@@ -384,3 +389,4 @@ st.markdown("---")
 if st.button("Gerar PDF"):
     b = create_pdf(proj_name, selected_typology, selected_sector, start_date, milestones, st.session_state.suspensions, total_susp)
     if b: st.download_button("Download PDF", b, "relatorio.pdf", "application/pdf")
+
