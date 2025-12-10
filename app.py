@@ -274,3 +274,266 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     pdf.ln(2)
     pdf.set_font("Arial", "", 10)
     pdf.cell(50, 6, "Regime:", 0, 0)
+    pdf.cell(0, 6, f"{regime}", 0, 1)
+    pdf.cell(50, 6, "Instrucao:", 0, 0)
+    pdf.cell(0, 6, start_date.strftime('%d/%m/%Y'), 0, 1)
+    pdf.cell(50, 6, "Total Suspensao:", 0, 0)
+    pdf.cell(0, 6, f"{total_susp} dias", 0, 1)
+    pdf.ln(5)
+
+    # 3. Cronograma
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, "3. Cronograma Oficial", 0, 1, 'L', 1)
+    pdf.ln(2)
+    
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_fill_color(220, 220, 220)
+    pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
+    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
+    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+    
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
+    pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
+    pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
+    
+    for m in milestones:
+        pdf.cell(90, 8, m["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
+        pdf.cell(40, 8, str(m["Prazo Legal"]), 1, 0, 'C')
+        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
+        pdf.ln()
+
+    if complementary:
+        pdf.ln(2)
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(0, 6, "Fases Complementares", 0, 1)
+        pdf.set_font("Arial", "", 9)
+        for c in complementary:
+            pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Ref"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
+            pdf.ln()
+
+    # 4. Gráfico Gantt
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "4. Cronograma Visual (Gantt)", 0, 1, 'L', 1)
+    pdf.ln(5)
+    
+    try:
+        tasks = []
+        start_dates = []
+        end_dates = []
+        colors = []
+        
+        last = start_date
+        for m in milestones:
+            end = m["Data Prevista"]
+            start = last if last < end else end
+            tasks.append(m["Etapa"])
+            start_dates.append(start)
+            end_dates.append(end)
+            colors.append('#87CEEB') # Skyblue
+            last = end
+            
+        for s in suspensions:
+            tasks.append("Suspensão")
+            start_dates.append(s['start'])
+            end_dates.append(s['end'])
+            colors.append('#FA8072') # Salmon
+            
+        if complementary:
+            for c in complementary:
+                tasks.append(c["Etapa"])
+                end = c["Data"]
+                if "Fim" in c["Etapa"]:
+                    start = end - timedelta(days=30)
+                else:
+                    start = end - timedelta(days=1)
+                start_dates.append(start)
+                end_dates.append(end)
+                colors.append('#90EE90') # Lightgreen
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for i, task in enumerate(tasks):
+            start_num = mdates.date2num(start_dates[i])
+            end_num = mdates.date2num(end_dates[i])
+            duration = end_num - start_num
+            if duration < 1: duration = 1
+            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='grey', alpha=0.8)
+            
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y'))
+        plt.xticks(rotation=45)
+        plt.grid(axis='x', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+            plt.savefig(tmpfile.name, dpi=100)
+            tmp_filename = tmpfile.name
+            
+        pdf.image(tmp_filename, x=10, y=30, w=190)
+        plt.close(fig)
+        os.unlink(tmp_filename)
+        
+    except Exception as e:
+        pdf.ln(5)
+        pdf.set_font("Arial", "I", 10)
+        pdf.cell(0, 10, f"Erro no grafico: {str(e)}", 0, 1)
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# ==========================================
+# 5. INTERFACE DO UTILIZADOR
+# ==========================================
+
+# Cabeçalho
+st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>Simulador de Prazos AIA</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Ferramenta de gestão de prazos RJAIA & Simplex | <b>CCDR Centro</b></p>", unsafe_allow_html=True)
+
+if FPDF is None:
+    st.error("⚠️ Aviso: A biblioteca 'fpdf' não está instalada. O PDF não será gerado.")
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown("### 📂 Configuração do Processo")
+    proj_name = st.text_input("Nome do Projeto", "Processo Exemplo 2025")
+    start_date = st.date_input("📅 Data de Instrução (Dia 0)", date(2025, 1, 30))
+    
+    st.markdown("---")
+    st.markdown("### ⚖️ Enquadramento")
+    selected_typology = st.selectbox("Tipologia", list(TIPOLOGIAS_INFO.keys()))
+    selected_sector = st.selectbox("Setor de Atividade", list(SPECIFIC_LAWS.keys()))
+    
+    st.markdown("---")
+    st.markdown("### ⚙️ Ajustes")
+    adjust_weekend = st.checkbox("Ajuste CPA (Fim de Semana)", True)
+    
+    st.markdown("### 🗓️ Datas Chave")
+    theo_meeting = add_business_days(start_date, 9)
+    meeting_date_input = st.date_input("Reunião Prévia", value=theo_meeting)
+
+    st.markdown("---")
+    st.markdown("### ⏸️ Suspensões (PeA)")
+    
+    # Caixa de informação estilizada
+    st.info("""
+    **Dica para 09/05/2025 (Conf.):**
+    Use Início: **05/03/2025**
+    Fim: **29/04/2025**
+    """)
+    
+    if 'suspensions' not in st.session_state: st.session_state.suspensions = []
+    
+    with st.form("add_susp"):
+        c1, c2 = st.columns(2)
+        s_s = c1.date_input("Início", date(2025, 3, 5))
+        s_e = c2.date_input("Fim", date(2025, 4, 29))
+        if st.form_submit_button("Adicionar"):
+            st.session_state.suspensions.append({'start': s_s, 'end': s_e})
+            st.rerun()
+            
+    if st.session_state.suspensions:
+        for i, s in enumerate(st.session_state.suspensions):
+            c_txt, c_del = st.columns([0.85, 0.15])
+            c_txt.caption(f"{s['start'].strftime('%d/%m')} a {s['end'].strftime('%d/%m')}")
+            if c_del.button("✕", key=f"d{i}"):
+                del st.session_state.suspensions[i]
+                st.rerun()
+
+# ==========================================
+# 6. EXECUÇÃO E DASHBOARD
+# ==========================================
+
+milestones, complementary, total_susp, log_dia = calculate_all_milestones(
+    start_date, st.session_state.suspensions, meeting_date_input, adjust_weekend
+)
+final_date = milestones[-1]["Data Prevista"]
+conformity_date = milestones[1]["Data Prevista"]
+
+# Métricas Principais (Layout Cartões)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Início Processo", start_date.strftime("%d/%m/%Y"), "Dia 0")
+with col2:
+    st.metric("Suspensões", f"{total_susp} Dias", "Calendário")
+with col3:
+    st.metric("Conformidade", conformity_date.strftime("%d/%m/%Y"), "30 Dias Úteis")
+with col4:
+    st.metric("Limite DIA", final_date.strftime("%d/%m/%Y"), "150 Dias Úteis")
+
+st.markdown("---")
+
+# Abas de Conteúdo
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Tabela Geral", "📑 Complementares", "📊 Gantt Interativo", "⚖️ Legislação"])
+
+with tab1:
+    df = pd.DataFrame(milestones)
+    row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
+    df = pd.concat([row0, df], ignore_index=True)
+    df["Data Prevista"] = pd.to_datetime(df["Data Prevista"]).dt.strftime("%d-%m-%Y")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+with tab2:
+    if complementary:
+        df_comp = pd.DataFrame(complementary)
+        df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
+        st.dataframe(df_comp, use_container_width=True)
+    else:
+        st.warning("Prazos complementares indisponíveis.")
+
+with tab3:
+    # Gráfico Plotly para Ecrã (Interativo)
+    data_gantt = []
+    last = start_date
+    for m in milestones:
+        end = m["Data Prevista"]
+        start = last if last < end else end
+        data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
+        last = end
+    for c in complementary:
+        if "Consulta" in c["Etapa"]:
+            end_c = c["Data"]
+            start_c = add_business_days(end_c, -30) if "Fim" in c["Etapa"] else c["Data"]
+            data_gantt.append(dict(Task=c["Etapa"], Start=start_c, Finish=end_c, Resource="Consulta Pública"))
+        else:
+            data_gantt.append(dict(Task=c["Etapa"], Start=c["Data"], Finish=c["Data"], Resource="Outros"))
+    for s in st.session_state.suspensions:
+        data_gantt.append(dict(Task="Suspensão", Start=s['start'], Finish=s['end'], Resource="Suspensão"))
+        
+    fig = px.timeline(pd.DataFrame(data_gantt), x_start="Start", x_end="Finish", y="Task", color="Resource", 
+                      color_discrete_map={"Fase Principal": "#1E3A8A", "Suspensão": "#E74C3C", "Consulta Pública": "#4CAF50", "Outros": "#FFC107"},
+                      title="Cronograma do Processo")
+    fig.update_yaxes(autorange="reversed")
+    st.plotly_chart(fig, use_container_width=True)
+
+with tab4:
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("#### Legislação Transversal")
+        for k, v in COMMON_LAWS.items():
+            st.markdown(f"🔹 [{k}]({v})")
+    with col_b:
+        st.markdown(f"#### Setor: {selected_sector}")
+        for k, v in SPECIFIC_LAWS.get(selected_sector, {}).items():
+            st.markdown(f"🔸 [{k}]({v})")
+
+# Botão de Download
+st.markdown("### 🖨️ Exportar")
+if st.button("Gerar Relatório PDF Completo"):
+    with st.spinner("A gerar documento..."):
+        pdf_bytes = create_pdf(
+            proj_name, 
+            selected_typology, 
+            selected_sector, 
+            "Regime 150 Dias (Simplex)", 
+            start_date, 
+            milestones, 
+            complementary, 
+            st.session_state.suspensions, 
+            total_susp
+        )
+        if pdf_bytes:
+            st.success("Relatório gerado com sucesso!")
+            st.download_button("📥 Descarregar Relatório PDF", pdf_bytes, "relatorio_aia_completo.pdf", "application/pdf")
+
