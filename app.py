@@ -165,14 +165,19 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
     complementary = []
     
     if conf_date_real:
+        # Recuperar configurações avançadas
+        cp_duration = milestones_config.get("cp_duration", 30)
+        visit_days = milestones_config.get("visita", 15)
+        sectoral_days = milestones_config.get("setoriais", 75)
+
         # 1. Conformidade (Cálculo Teórico Sem Suspensão para comparação)
         conf_date_theo = calculate_deadline_rigorous(start_date, milestones_config["conformidade"], [])
         
         # 2. Início CP: 5 dias úteis após Conformidade Real
         cp_start = add_business_days(conf_date_real, 5)
         
-        # 3. Fim CP: 30 dias úteis após Início CP
-        cp_end = add_business_days(cp_start, 30)
+        # 3. Fim CP: Duração configurável (default 30) após Início CP
+        cp_end = add_business_days(cp_start, cp_duration)
         
         # 4. Pareceres Externos: 3+20 (23 dias úteis) após INÍCIO da CP
         external_ops = add_business_days(cp_start, 23)
@@ -181,11 +186,9 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
         cp_report = add_business_days(cp_end, 7)
         
         # 6. Visita: Definida na config (ex: 15 dias após início CP)
-        visit_days = milestones_config.get("visita", 15)
         visit_date = add_business_days(cp_start, visit_days)
         
         # 7. Pareceres Setoriais: Definido na config (ex: 75 dias globais)
-        sectoral_days = milestones_config.get("setoriais", 75)
         sectoral_date = calculate_deadline_rigorous(start_date, sectoral_days, suspensions)
         
         # Construção da Lista Ordenada
@@ -193,7 +196,7 @@ def calculate_workflow(start_date, suspensions, regime_days, milestones_config):
             {"Etapa": "1. Limite Conformidade (Sem Suspensão)", "Ref": "Teórico", "Data": conf_date_theo},
             {"Etapa": "1. Limite Conformidade (Com Suspensão)", "Ref": "Real", "Data": conf_date_real},
             {"Etapa": "2. Início Consulta Pública", "Ref": "Conf + 5 dias", "Data": cp_start},
-            {"Etapa": "3. Fim Consulta Pública", "Ref": "Início CP + 30 dias", "Data": cp_end},
+            {"Etapa": "3. Fim Consulta Pública", "Ref": f"Início CP + {cp_duration} dias", "Data": cp_end},
             {"Etapa": "4. Data para Pareceres Externos", "Ref": "Início CP + 23 dias", "Data": external_ops},
             {"Etapa": "5. Envio do Relatório da CP", "Ref": "Fim CP + 7 dias", "Data": cp_report},
             {"Etapa": "6. Visita Técnica", "Ref": f"Início CP + {visit_days} dias", "Data": visit_date},
@@ -273,6 +276,7 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
     pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
     
     pdf.set_font("Arial", "", 9)
+    # Linha 0
     pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
     pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
     pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
@@ -342,15 +346,17 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
             
         if complementary:
             for c in complementary:
-                tasks.append(c["Etapa"])
-                end = c["Data"]
-                if "Fim" in c["Etapa"]:
-                    start = end - timedelta(days=30)
-                else:
-                    start = end - timedelta(days=1)
-                start_dates.append(start)
-                end_dates.append(end)
-                colors.append('lightgreen')
+                # Evitar duplicar linhas que são apenas datas de referência
+                if "Início" in c["Etapa"] or "Fim" in c["Etapa"] or "Visita" in c["Etapa"]:
+                    tasks.append(c["Etapa"])
+                    end = c["Data"]
+                    if "Fim" in c["Etapa"]:
+                        start = end - timedelta(days=30)
+                    else:
+                        start = end - timedelta(days=1)
+                    start_dates.append(start)
+                    end_dates.append(end)
+                    colors.append('lightgreen')
 
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, task in enumerate(tasks):
@@ -429,6 +435,7 @@ with st.sidebar:
         # NOVAS CONFIGURAÇÕES PEDIDAS
         st.markdown("---")
         st.caption("Prazos Complementares")
+        d_cp_duration = st.number_input("Duração Consulta Pública (dias)", value=30, help="Duração padrão: 30 dias")
         d_visita = st.number_input("Dia da Visita (após Início CP)", value=15, help="3ª semana da CP")
         d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, help="Contagem a partir do Dia 0")
             
@@ -439,7 +446,8 @@ with st.sidebar:
             "audiencia": d_aud,
             "dia": d_dia,
             "visita": d_visita,
-            "setoriais": d_setoriais
+            "setoriais": d_setoriais,
+            "cp_duration": d_cp_duration
         }
 
     st.markdown("---")
@@ -496,6 +504,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Prazos Complem
 
 with tab1:
     df_main = pd.DataFrame(milestones)
+    # Adicionar linha inicial
     row0 = pd.DataFrame([{"Etapa": "Entrada / Instrução", "Prazo Legal": "Dia 0", "Data Prevista": start_date}])
     df_main = pd.concat([row0, df_main], ignore_index=True)
     df_main["Data Prevista"] = pd.to_datetime(df_main["Data Prevista"]).dt.strftime("%d-%m-%Y")
@@ -506,7 +515,7 @@ with tab2:
     if complementary:
         df_comp = pd.DataFrame(complementary)
         df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
-        st.dataframe(df_comp, use_container_width=True)
+        st.dataframe(df_comp, use_container_width=True, hide_index=True)
     else:
         st.info("Prazos complementares indisponíveis.")
 
@@ -549,8 +558,8 @@ st.markdown("---")
 if st.button("Gerar Relatório PDF"):
     pdf_bytes = create_pdf(
         proj_name, 
-        selected_typology,
-        selected_sector,
+        selected_typology, 
+        selected_sector, 
         f"Regime {regime_option} Dias", 
         start_date, 
         milestones, 
