@@ -410,10 +410,10 @@ with st.sidebar:
     )
     
     with st.expander("⚙️ Definições Avançadas de Prazos", expanded=False):
-        st.caption("Os valores ajustam-se automaticamente ao Regime, mas podem ser editados.")
+        st.caption("Valores ajustam-se automaticamente ao Regime (Simplex ou Geral). Pode editar abaixo.")
         
-        # Uso de chaves (keys) dinâmicas para forçar a atualização dos valores default ao trocar de regime
         if regime_option == 150:
+            # Defaults 150 dias (RJAIA Geral)
             d_reuniao = st.number_input("Reunião", value=9, key="r150")
             d_conf = st.number_input("Conformidade", value=30, key="c150")
             d_ptf = st.number_input("Envio PTF", value=85, key="p150")
@@ -421,12 +421,12 @@ with st.sidebar:
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, key="s150")
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True, key="d150")
         else:
-            # Defaults do Excel (Valores a Azul / Simplex)
+            # Defaults 90 dias (Baseados nos prazos Standard/Normal do Excel)
             d_reuniao = st.number_input("Reunião", value=9, key="r90")
-            d_conf = st.number_input("Conformidade", value=20, key="c90") # Excel (20 dias)
-            d_ptf = st.number_input("Envio PTF", value=65, key="p90")     # Excel (65 dias)
-            d_aud = st.number_input("Audiência", value=70, key="a90")     # Excel (70 dias)
-            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90") # Excel (60 dias)
+            d_conf = st.number_input("Conformidade", value=20, key="c90")  # (20 dias)
+            d_ptf = st.number_input("Envio PTF", value=75, key="p90")      # (75 dias) - Standard Excel
+            d_aud = st.number_input("Audiência", value=80, key="a90")      # (80 dias) - Standard Excel
+            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90") # (60 dias)
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
         st.markdown("**Prazos Complementares:**")
@@ -535,3 +535,4 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+
