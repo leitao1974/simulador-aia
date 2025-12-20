@@ -421,11 +421,11 @@ with st.sidebar:
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, key="s150")
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True, key="d150")
         else:
-            # Defaults 90 dias (Padrões Legais/Excel "Valores a Azul")
+            # Defaults 90 dias (Padrões Legais/Excel "Normal")
             d_reuniao = st.number_input("Reunião", value=9, key="r90")
             d_conf = st.number_input("Conformidade", value=20, key="c90")  # (20 dias)
-            d_ptf = st.number_input("Envio PTF", value=65, key="p90")      # (65 dias)
-            d_aud = st.number_input("Audiência", value=70, key="a90")      # (70 dias)
+            d_ptf = st.number_input("Envio PTF", value=75, key="p90")      # (75 dias)
+            d_aud = st.number_input("Audiência", value=80, key="a90")      # (80 dias)
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90") # (60 dias)
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
