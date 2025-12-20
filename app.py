@@ -22,22 +22,69 @@ except ImportError:
     FPDF = None
 
 # ==========================================
-# 2. DADOS DE BASE
+# 2. MOTOR DE FERIADOS (DINÂMICO)
 # ==========================================
 
-# FERIADOS
-# Nota: CARNAVAL 2025 (04/03) REMOVIDO para alinhar com o Excel de referência.
-FERIADOS_STR = [
-    '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
-    '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
-    '2025-01-01', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15', '2025-12-01', '2025-12-08', '2025-12-25', 
-    '2026-01-01', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10', '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25', 
-    '2027-01-01', '2027-03-26', '2027-05-27', '2027-06-10', '2027-10-05', '2027-11-01', '2027-12-01', '2027-12-08', 
-    '2028-04-14', '2028-04-25', '2028-05-01', '2028-06-15', '2028-08-15', '2028-10-05', '2028-11-01', '2028-12-01', '2028-12-08', '2028-12-25', 
-    '2029-01-01', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
-    '2030-01-01', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
-]
-FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
+def get_easter_date(year):
+    """Calcula o Domingo de Páscoa para qualquer ano."""
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+def get_holidays_for_year(year):
+    """Gera a lista de Feriados Nacionais de Portugal para um dado ano."""
+    holidays = set()
+    
+    # Feriados Fixos
+    fixed_dates = [
+        (1, 1),   # Ano Novo
+        (4, 25),  # Dia da Liberdade
+        (5, 1),   # Dia do Trabalhador
+        (6, 10),  # Dia de Portugal
+        (8, 15),  # Assunção de Nossa Senhora
+        (10, 5),  # Implantação da República
+        (11, 1),  # Dia de Todos os Santos
+        (12, 1),  # Restauração da Independência
+        (12, 8),  # Imaculada Conceição
+        (12, 25)  # Natal
+    ]
+    for m, d in fixed_dates:
+        holidays.add(date(year, m, d))
+        
+    # Feriados Móveis (Baseados na Páscoa)
+    easter = get_easter_date(year)
+    good_friday = easter - timedelta(days=2) # Sexta-Feira Santa
+    corpus_christi = easter + timedelta(days=60) # Corpo de Deus
+    
+    holidays.add(good_friday)
+    holidays.add(corpus_christi)
+    # Nota: O Carnaval (easter - 47 dias) não está incluído por defeito
+    # para alinhar com a regra da CCDR/Excel analisado.
+    
+    return holidays
+
+def get_holidays_range(start_year, end_year):
+    """Gera feriados para um intervalo de anos."""
+    all_holidays = set()
+    for y in range(start_year, end_year + 1):
+        all_holidays.update(get_holidays_for_year(y))
+    return all_holidays
+
+# ==========================================
+# 3. DADOS LEGAIS E REFERÊNCIAS
+# ==========================================
 
 COMMON_LAWS = {
     "RJAIA (DL 151-B/2013)": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-116043164",
@@ -62,31 +109,31 @@ SPECIFIC_LAWS = {
 }
 
 # ==========================================
-# 3. MOTOR DE CÁLCULO
+# 4. MOTOR DE CÁLCULO DE PRAZOS
 # ==========================================
 
-def is_business_day(check_date):
-    if check_date.weekday() >= 5: return False
-    if check_date in FERIADOS: return False
+def is_business_day(check_date, holidays_set):
+    if check_date.weekday() >= 5: return False # Sábado ou Domingo
+    if check_date in holidays_set: return False # Feriado
     return True
 
-def add_business_days(start_date, num_days):
+def add_business_days(start_date, num_days, holidays_set):
     current_date = start_date
     added_days = 0
     while added_days < num_days:
         current_date += timedelta(days=1)
-        if is_business_day(current_date):
+        if is_business_day(current_date, holidays_set):
             added_days += 1
     return current_date
 
 def is_suspended(current_date, suspensions):
     for s in suspensions:
-        # Lógica inclusiva: se a data for igual ao início ou fim, conta como suspenso
+        # Lógica inclusiva: o dia de início e fim da suspensão contam como parados
         if s['start'] <= current_date <= s['end']:
             return True
     return False
 
-def calculate_deadline_rigorous(start_date, target_business_days, suspensions, return_log=False):
+def calculate_deadline_rigorous(start_date, target_business_days, suspensions, holidays_set, return_log=False):
     current_date = start_date
     days_counted = 0
     log = []
@@ -94,19 +141,18 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
     if return_log:
         log.append({"Data": current_date, "Dia Contado": 0, "Status": "Início"})
 
-    # O loop continua enquanto não tivermos contado os dias úteis todos
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
         
         status = "Util"
-        # 1. Verifica Suspensão primeiro
+        # 1. Verifica Suspensão
         if is_suspended(current_date, suspensions):
             status = "Suspenso"
         # 2. Verifica Fim de Semana
         elif current_date.weekday() >= 5:
             status = "Fim de Semana"
         # 3. Verifica Feriado
-        elif current_date in FERIADOS:
+        elif current_date in holidays_set:
             status = "Feriado"
             
         if status == "Util":
@@ -117,8 +163,8 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
             
     final_date = current_date
     
-    # Ajuste CPA: Se o prazo terminar em Sábado/Domingo/Feriado, passa para o próximo útil
-    while final_date.weekday() >= 5 or final_date in FERIADOS:
+    # Ajuste CPA (Art 87): Se o prazo terminar em Sábado/Domingo/Feriado, passa para o próximo útil
+    while final_date.weekday() >= 5 or final_date in holidays_set:
          final_date += timedelta(days=1)
     
     if return_log:
@@ -126,10 +172,13 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
     return final_date
 
 def calculate_workflow(start_date, suspensions, milestones_config):
+    # Gerar feriados dinamicamente para o ano de início e os 2 seguintes (margem de segurança)
+    holidays_set = get_holidays_range(start_date.year, start_date.year + 2)
+    
     results = []
     log_final = []
     
-    # Marcos Principais definidos na Sidebar
+    # Marcos Principais
     steps = [
         ("Data Reunião", milestones_config["reuniao"]),
         ("Limite Conformidade", milestones_config["conformidade"]),
@@ -142,11 +191,11 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     
     for nome, dias in steps:
         if dias == milestones_config["dia"]: 
-            # Gera log detalhado apenas para o prazo final
-            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
+            # Log apenas para a última etapa
+            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, holidays_set, return_log=True)
             log_final = log_data
         else:
-            final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
+            final_date = calculate_deadline_rigorous(start_date, dias, suspensions, holidays_set)
             
         if nome == "Limite Conformidade":
             conf_date_real = final_date
@@ -167,25 +216,25 @@ def calculate_workflow(start_date, suspensions, milestones_config):
         sectoral_days = milestones_config.get("setoriais", 75)
 
         # Cálculos de datas derivadas
-        conf_date_theo = calculate_deadline_rigorous(start_date, milestones_config["conformidade"], [])
+        conf_date_theo = calculate_deadline_rigorous(start_date, milestones_config["conformidade"], [], holidays_set)
         
         # 2. Início CP: 5 dias úteis APÓS a Conformidade Real
-        cp_start = add_business_days(conf_date_real, 5)
+        cp_start = add_business_days(conf_date_real, 5, holidays_set)
         
         # 3. Fim CP
-        cp_end = add_business_days(cp_start, cp_duration)
+        cp_end = add_business_days(cp_start, cp_duration, holidays_set)
         
         # 4. Pareceres Externos (Início CP + 23)
-        external_ops = add_business_days(cp_start, 23)
+        external_ops = add_business_days(cp_start, 23, holidays_set)
         
         # 5. Relatório CP (Fim CP + 7)
-        cp_report = add_business_days(cp_end, 7)
+        cp_report = add_business_days(cp_end, 7, holidays_set)
         
         # 6. Visita (Início CP + 15)
-        visit_date = add_business_days(cp_start, visit_days)
+        visit_date = add_business_days(cp_start, visit_days, holidays_set)
         
         # 7. Pareceres Setoriais (Global)
-        sectoral_date = calculate_deadline_rigorous(start_date, sectoral_days, suspensions)
+        sectoral_date = calculate_deadline_rigorous(start_date, sectoral_days, suspensions, holidays_set)
         
         gantt_data = {
             "cp_start": cp_start,
@@ -210,7 +259,180 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     return results, complementary, total_susp, log_final, gantt_data
 
 # ==========================================
-# 5. INTERFACE DO UTILIZADOR
+# 5. GERADOR DE PDF
+# ==========================================
+def create_pdf(project_name, typology, sector, regime, start_date, milestones, complementary, suspensions, total_susp, gantt_data):
+    if FPDF is None: return None
+    class PDF(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 10)
+            self.set_text_color(30, 58, 138)
+            self.cell(0, 10, 'CCDR CENTRO - AUTORIDADE DE AIA', 0, 1, 'C')
+            self.line(10, 20, 200, 20)
+            self.ln(10)
+        def footer(self):
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.set_text_color(128, 128, 128)
+            self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+
+    pdf = PDF()
+    pdf.add_page()
+    
+    pdf.set_font("Arial", "B", 16)
+    pdf.set_text_color(15, 23, 42)
+    safe_title = f"Relatorio de Prazos: {project_name}"
+    pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='L')
+    pdf.ln(5)
+
+    # 1. Enquadramento
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "1. Enquadramento e Legislacao", 0, 1, 'L', 1)
+    pdf.ln(2)
+    
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Tipologia:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(40, 6, "Setor:", 0, 0)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
+    pdf.ln(2)
+    
+    # 2. Resumo
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "2. Resumo", 0, 1, 'L', 1)
+    pdf.ln(2)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(50, 6, "Regime:", 0, 0)
+    pdf.cell(0, 6, f"{regime}", 0, 1)
+    pdf.cell(50, 6, "Data de Instrucao:", 0, 0)
+    pdf.cell(0, 6, start_date.strftime('%d/%m/%Y'), 0, 1)
+    pdf.cell(50, 6, "Total Suspensao:", 0, 0)
+    pdf.cell(0, 6, f"{total_susp} dias", 0, 1)
+    pdf.ln(5)
+
+    # 3. Cronograma Oficial
+    pdf.set_font("Arial", "B", 11)
+    pdf.cell(0, 8, "3. Cronograma Oficial (Fases Principais)", 0, 1, 'L', 1)
+    pdf.ln(2)
+    
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
+    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
+    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+    
+    pdf.set_font("Arial", "", 9)
+    pdf.ln()
+    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
+    pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
+    pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
+    pdf.ln()
+    
+    for m in milestones:
+        pdf.cell(90, 8, m["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
+        pdf.cell(40, 8, str(m["Prazo Legal"]), 1, 0, 'C')
+        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
+        pdf.ln()
+
+    # 4. Prazos Complementares
+    if complementary:
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 8, "4. Prazos Complementares e Setoriais", 0, 1, 'L', 1)
+        pdf.set_font("Arial", "", 9)
+        
+        pdf.set_font("Arial", "B", 9)
+        pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
+        pdf.cell(40, 8, "Referencia", 1, 0, 'C', 1)
+        pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
+        pdf.ln()
+        
+        pdf.set_font("Arial", "", 9)
+        for c in complementary:
+            pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Ref"].encode('latin-1','replace').decode('latin-1'), 1)
+            pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
+            pdf.ln()
+
+    # 5. Suspensões
+    if suspensions:
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(0, 8, "Registo de Suspensoes", 0, 1, 'L', 1)
+        pdf.set_font("Arial", "", 9)
+        for s in suspensions:
+            dur = (s['end'] - s['start']).days + 1
+            pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
+            pdf.ln()
+
+    # 6. Cronograma Visual
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "5. Cronograma Visual (Gantt)", 0, 1)
+    
+    try:
+        tasks = []
+        start_dates = []
+        end_dates = []
+        colors = []
+        
+        last = start_date
+        for m in milestones:
+            end = m["Data Prevista"]
+            start = last if last < end else end
+            tasks.append(m["Etapa"])
+            start_dates.append(start)
+            end_dates.append(end)
+            colors.append('skyblue')
+            last = end
+            
+        for s in suspensions:
+            tasks.append("Suspensão")
+            start_dates.append(s['start'])
+            end_dates.append(s['end'])
+            colors.append('salmon')
+            
+        if gantt_data:
+            tasks.append("Consulta Pública")
+            start_dates.append(gantt_data['cp_start'])
+            end_dates.append(gantt_data['cp_end'])
+            colors.append('lightgreen')
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for i, task in enumerate(tasks):
+            start_num = mdates.date2num(start_dates[i])
+            end_num = mdates.date2num(end_dates[i])
+            duration = end_num - start_num
+            if duration < 1: duration = 1
+            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='grey')
+            
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
+        plt.xticks(rotation=45)
+        plt.grid(axis='x', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+            plt.savefig(tmpfile.name, dpi=100)
+            tmp_filename = tmpfile.name
+            
+        pdf.image(tmp_filename, x=10, y=30, w=190)
+        plt.close(fig)
+        os.unlink(tmp_filename)
+        
+    except Exception as e:
+        pdf.ln(5)
+        pdf.set_font("Arial", "I", 10)
+        pdf.cell(0, 10, f"Erro no grafico: {str(e)}", 0, 1)
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# ==========================================
+# 6. INTERFACE DO UTILIZADOR
 # ==========================================
 
 st.title("🌿 Analista EIA - RJAIA Completo")
@@ -292,7 +514,7 @@ with st.sidebar:
                 st.rerun()
 
 # ==========================================
-# 6. CÁLCULO E RESULTADOS
+# 7. CÁLCULO E RESULTADOS
 # ==========================================
 
 milestones, complementary, total_susp, log_dia, gantt_data = calculate_workflow(
