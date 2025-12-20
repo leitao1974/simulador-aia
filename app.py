@@ -25,7 +25,7 @@ except ImportError:
 # 2. DADOS DE BASE
 # ==========================================
 
-# FERIADOS (Incluindo Carnaval 2025: 04/03/2025)
+# FERIADOS (Incluindo Carnaval 2025 para precisão futura)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -147,16 +147,10 @@ def calculate_workflow(start_date, suspensions, milestones_config):
         else:
             final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
             
-        # --- CORREÇÃO DE LÓGICA PARA CONFORMIDADE ---
-        # Se houver suspensões, a Conformidade não pode acabar ANTES da suspensão
-        # (simula o efeito do PEA que arrasta a decisão para depois da suspensão).
-        # Offset ajustado para 4 dias úteis.
+        # Removemos qualquer lógica forçada de offset.
+        # O cálculo é puro: Dia X + Suspensões.
+        
         if nome == "Limite Conformidade":
-            if suspensions:
-                last_susp_end = max([s['end'] for s in suspensions])
-                if final_date < last_susp_end:
-                    final_date = add_business_days(last_susp_end, 4)
-            
             conf_date_real = final_date
             
         results.append({
@@ -428,10 +422,14 @@ with st.sidebar:
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75)
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True)
         else:
+            # Defaults ajustados conforme Excel (Valores em Azul)
             d_reuniao = st.number_input("Reunião", value=9)
             d_conf = st.number_input("Conformidade", value=20)
-            d_ptf = st.number_input("Envio PTF", value=65, help="Ref: Dia 65 com suspensão")
-            d_aud = st.number_input("Audiência", value=70, help="Ref: Dia 70 com suspensão")
+            # Excel: "Data de envio do PTF à AAIA (65 dias)"
+            d_ptf = st.number_input("Envio PTF", value=65)
+            # Excel: "Audiência de interessados (70 dias)"
+            d_aud = st.number_input("Audiência", value=70)
+            # Excel: "Data limite Pareceres Sectoriais (no dia 60)"
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60)
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True)
         
@@ -541,3 +539,4 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+
