@@ -25,16 +25,17 @@ except ImportError:
 # 2. DADOS DE BASE
 # ==========================================
 
-# FERIADOS (Incluindo Carnaval 2025: 04/03/2025)
+# FERIADOS
+# Nota: CARNAVAL 2025 (04/03) REMOVIDO para alinhar com o Excel de referência.
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
-    '2025-01-01', '2025-03-04', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15', '2025-12-01', '2025-12-08', '2025-12-25', 
-    '2026-01-01', '2026-02-17', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10', '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25', 
-    '2027-01-01', '2027-02-09', '2027-03-26', '2027-05-27', '2027-06-10', '2027-10-05', '2027-11-01', '2027-12-01', '2027-12-08', 
-    '2028-02-29', '2028-04-14', '2028-04-25', '2028-05-01', '2028-06-15', '2028-08-15', '2028-10-05', '2028-11-01', '2028-12-01', '2028-12-08', '2028-12-25', 
-    '2029-01-01', '2029-02-13', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
-    '2030-01-01', '2030-03-05', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
+    '2025-01-01', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15', '2025-12-01', '2025-12-08', '2025-12-25', 
+    '2026-01-01', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10', '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25', 
+    '2027-01-01', '2027-03-26', '2027-05-27', '2027-06-10', '2027-10-05', '2027-11-01', '2027-12-01', '2027-12-08', 
+    '2028-04-14', '2028-04-25', '2028-05-01', '2028-06-15', '2028-08-15', '2028-10-05', '2028-11-01', '2028-12-01', '2028-12-08', '2028-12-25', 
+    '2029-01-01', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
+    '2030-01-01', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
 ]
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
@@ -140,12 +141,12 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     conf_date_real = None 
     
     for nome, dias in steps:
-        final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
-        
-        # Log apenas para a última etapa
         if dias == milestones_config["dia"]: 
-            _, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
+            # Gera log detalhado apenas para o prazo final
+            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
             log_final = log_data
+        else:
+            final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
             
         if nome == "Limite Conformidade":
             conf_date_real = final_date
@@ -207,179 +208,6 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     total_susp = sum([(s['end'] - s['start']).days + 1 for s in suspensions])
     
     return results, complementary, total_susp, log_final, gantt_data
-
-# ==========================================
-# 4. GERADOR DE PDF
-# ==========================================
-def create_pdf(project_name, typology, sector, regime, start_date, milestones, complementary, suspensions, total_susp, gantt_data):
-    if FPDF is None: return None
-    class PDF(FPDF):
-        def header(self):
-            self.set_font('Arial', 'B', 10)
-            self.set_text_color(30, 58, 138)
-            self.cell(0, 10, 'CCDR CENTRO - AUTORIDADE DE AIA', 0, 1, 'C')
-            self.line(10, 20, 200, 20)
-            self.ln(10)
-        def footer(self):
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            self.set_text_color(128, 128, 128)
-            self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
-
-    pdf = PDF()
-    pdf.add_page()
-    
-    pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(15, 23, 42)
-    safe_title = f"Relatorio de Prazos: {project_name}"
-    pdf.multi_cell(0, 10, safe_title.encode('latin-1', 'replace').decode('latin-1'), align='L')
-    pdf.ln(5)
-
-    # 1. Enquadramento
-    pdf.set_fill_color(241, 245, 249)
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "1. Enquadramento e Legislacao", 0, 1, 'L', 1)
-    pdf.ln(2)
-    
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(40, 6, "Tipologia:", 0, 0)
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 6, typology.encode('latin-1','replace').decode('latin-1'))
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(40, 6, "Setor:", 0, 0)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 6, sector.encode('latin-1','replace').decode('latin-1'), 0, 1)
-    pdf.ln(2)
-    
-    # 2. Resumo
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "2. Resumo", 0, 1, 'L', 1)
-    pdf.ln(2)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(50, 6, "Regime:", 0, 0)
-    pdf.cell(0, 6, f"{regime}", 0, 1)
-    pdf.cell(50, 6, "Data de Instrucao:", 0, 0)
-    pdf.cell(0, 6, start_date.strftime('%d/%m/%Y'), 0, 1)
-    pdf.cell(50, 6, "Total Suspensao:", 0, 0)
-    pdf.cell(0, 6, f"{total_susp} dias", 0, 1)
-    pdf.ln(5)
-
-    # 3. Cronograma Oficial
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(0, 8, "3. Cronograma Oficial (Fases Principais)", 0, 1, 'L', 1)
-    pdf.ln(2)
-    
-    pdf.set_font("Arial", "B", 9)
-    pdf.set_fill_color(226, 232, 240)
-    pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
-    pdf.cell(40, 8, "Prazo Legal", 1, 0, 'C', 1)
-    pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
-    
-    pdf.set_font("Arial", "", 9)
-    pdf.ln()
-    pdf.cell(90, 8, "Entrada / Instrucao", 1, 0, 'L')
-    pdf.cell(40, 8, "Dia 0", 1, 0, 'C')
-    pdf.cell(40, 8, start_date.strftime('%d/%m/%Y'), 1, 1, 'C')
-    pdf.ln()
-    
-    for m in milestones:
-        pdf.cell(90, 8, m["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
-        pdf.cell(40, 8, str(m["Prazo Legal"]), 1, 0, 'C')
-        pdf.cell(40, 8, m["Data Prevista"].strftime('%d/%m/%Y'), 1, 0, 'C')
-        pdf.ln()
-
-    # 4. Prazos Complementares
-    if complementary:
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, "4. Prazos Complementares e Setoriais", 0, 1, 'L', 1)
-        pdf.set_font("Arial", "", 9)
-        
-        pdf.set_font("Arial", "B", 9)
-        pdf.cell(90, 8, "Etapa", 1, 0, 'L', 1)
-        pdf.cell(40, 8, "Referencia", 1, 0, 'C', 1)
-        pdf.cell(40, 8, "Data Prevista", 1, 1, 'C', 1)
-        pdf.ln()
-        
-        pdf.set_font("Arial", "", 9)
-        for c in complementary:
-            pdf.cell(90, 8, c["Etapa"].encode('latin-1','replace').decode('latin-1'), 1)
-            pdf.cell(40, 8, c["Ref"].encode('latin-1','replace').decode('latin-1'), 1)
-            pdf.cell(40, 8, c["Data"].strftime('%d/%m/%Y'), 1)
-            pdf.ln()
-
-    # 5. Suspensões
-    if suspensions:
-        pdf.ln(5)
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(0, 8, "Registo de Suspensoes", 0, 1, 'L', 1)
-        pdf.set_font("Arial", "", 9)
-        for s in suspensions:
-            dur = (s['end'] - s['start']).days + 1
-            pdf.cell(0, 6, f"- {s['start'].strftime('%d/%m/%Y')} a {s['end'].strftime('%d/%m/%Y')} ({dur} dias)", 0, 1)
-            pdf.ln()
-
-    # 6. Cronograma Visual
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, "5. Cronograma Visual (Gantt)", 0, 1)
-    
-    try:
-        tasks = []
-        start_dates = []
-        end_dates = []
-        colors = []
-        
-        last = start_date
-        for m in milestones:
-            end = m["Data Prevista"]
-            start = last if last < end else end
-            tasks.append(m["Etapa"])
-            start_dates.append(start)
-            end_dates.append(end)
-            colors.append('skyblue')
-            last = end
-            
-        for s in suspensions:
-            tasks.append("Suspensão")
-            start_dates.append(s['start'])
-            end_dates.append(s['end'])
-            colors.append('salmon')
-            
-        if gantt_data:
-            tasks.append("Consulta Pública")
-            start_dates.append(gantt_data['cp_start'])
-            end_dates.append(gantt_data['cp_end'])
-            colors.append('lightgreen')
-
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for i, task in enumerate(tasks):
-            start_num = mdates.date2num(start_dates[i])
-            end_num = mdates.date2num(end_dates[i])
-            duration = end_num - start_num
-            if duration < 1: duration = 1
-            ax.barh(task, duration, left=start_num, color=colors[i], align='center', edgecolor='grey')
-            
-        ax.xaxis_date()
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
-        plt.xticks(rotation=45)
-        plt.grid(axis='x', linestyle='--', alpha=0.5)
-        plt.tight_layout()
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-            plt.savefig(tmpfile.name, dpi=100)
-            tmp_filename = tmpfile.name
-            
-        pdf.image(tmp_filename, x=10, y=30, w=190)
-        plt.close(fig)
-        os.unlink(tmp_filename)
-        
-    except Exception as e:
-        pdf.ln(5)
-        pdf.set_font("Arial", "I", 10)
-        pdf.cell(0, 10, f"Erro no grafico: {str(e)}", 0, 1)
-
-    return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
 # 5. INTERFACE DO UTILIZADOR
@@ -536,3 +364,4 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+
