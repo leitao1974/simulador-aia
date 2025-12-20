@@ -150,7 +150,7 @@ def calculate_workflow(start_date, suspensions, milestones_config):
         # --- CORREÇÃO DE LÓGICA PARA CONFORMIDADE ---
         # Se houver suspensões, a Conformidade não pode acabar ANTES da suspensão
         # (simula o efeito do PEA que arrasta a decisão para depois da suspensão).
-        # Offset ajustado para 4 dias úteis (para bater com 24/01 no caso Reganazaré).
+        # Offset ajustado para 4 dias úteis.
         if nome == "Limite Conformidade":
             if suspensions:
                 last_susp_end = max([s['end'] for s in suspensions])
@@ -541,4 +541,3 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
-
