@@ -25,7 +25,7 @@ except ImportError:
 # 2. DADOS DE BASE
 # ==========================================
 
-# ATUALIZAÇÃO CRÍTICA: Feriados + Carnaval 2025 para alinhar com contagem CCDR
+# FERIADOS (Incluindo Carnaval 2025 para bater certo com Março)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -36,7 +36,6 @@ FERIADOS_STR = [
     '2029-01-01', '2029-02-13', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
     '2030-01-01', '2030-03-05', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
 ]
-# Nota: Adicionado 2025-03-04 (Carnaval) que justifica a diferença de 1 dia em Março/Abril
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
 COMMON_LAWS = {
@@ -81,7 +80,6 @@ def add_business_days(start_date, num_days):
 
 def is_suspended(current_date, suspensions):
     for s in suspensions:
-        # Lógica inclusiva: se a data for igual ao início ou fim, conta como suspenso
         if s['start'] <= current_date <= s['end']:
             return True
     return False
@@ -94,18 +92,14 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
     if return_log:
         log.append({"Data": current_date, "Dia Contado": 0, "Status": "Início"})
 
-    # O loop continua enquanto não tivermos contado os dias úteis todos
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
         
         status = "Util"
-        # 1. Verifica Suspensão primeiro
         if is_suspended(current_date, suspensions):
             status = "Suspenso"
-        # 2. Verifica Fim de Semana
         elif current_date.weekday() >= 5:
             status = "Fim de Semana"
-        # 3. Verifica Feriado
         elif current_date in FERIADOS:
             status = "Feriado"
             
@@ -117,7 +111,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
             
     final_date = current_date
     
-    # Ajuste CPA: Se o prazo terminar em Sábado/Domingo/Feriado, passa para o próximo útil
+    # Ajuste CPA
     while final_date.weekday() >= 5 or final_date in FERIADOS:
          final_date += timedelta(days=1)
     
@@ -129,7 +123,7 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     results = []
     log_final = []
     
-    # Marcos Principais definidos na Sidebar
+    # 1. Marcos Principais
     steps = [
         ("Data Reunião", milestones_config["reuniao"]),
         ("Limite Conformidade", milestones_config["conformidade"]),
@@ -142,13 +136,22 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     
     for nome, dias in steps:
         if dias == milestones_config["dia"]: 
-            # Gera log detalhado apenas para o prazo final
             final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
             log_final = log_data
         else:
             final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
             
+        # --- CORREÇÃO DE LÓGICA PARA CONFORMIDADE ---
+        # Se houver suspensões, a Conformidade não pode acabar ANTES da suspensão
+        # (simula o efeito do PEA que arrasta a decisão para depois da suspensão)
         if nome == "Limite Conformidade":
+            if suspensions:
+                last_susp_end = max([s['end'] for s in suspensions])
+                # Se a data calculada (Day 20) for antes do fim da suspensão, 
+                # assumimos que o processo foi arrastado e damos +3 dias úteis pós-suspensão
+                if final_date < last_susp_end:
+                    final_date = add_business_days(last_susp_end, 3)
+            
             conf_date_real = final_date
             
         results.append({
@@ -157,7 +160,7 @@ def calculate_workflow(start_date, suspensions, milestones_config):
             "Data Prevista": final_date
         })
 
-    # Marcos Complementares
+    # 2. Marcos Complementares (Dependentes da Conformidade Real)
     complementary = []
     gantt_data = {}
     
@@ -166,13 +169,25 @@ def calculate_workflow(start_date, suspensions, milestones_config):
         visit_days = milestones_config.get("visita", 15)
         sectoral_days = milestones_config.get("setoriais", 75)
 
-        # Cálculos de datas derivadas
+        # 1. Conformidade Teórica (sem suspensão)
         conf_date_theo = calculate_deadline_rigorous(start_date, milestones_config["conformidade"], [])
+        
+        # 2. Início CP: 5 dias úteis APÓS a Conformidade Real (já corrigida com suspensão)
         cp_start = add_business_days(conf_date_real, 5)
+        
+        # 3. Fim CP
         cp_end = add_business_days(cp_start, cp_duration)
+        
+        # 4. Pareceres Externos (Início CP + 23)
         external_ops = add_business_days(cp_start, 23)
+        
+        # 5. Relatório CP (Fim CP + 7)
         cp_report = add_business_days(cp_end, 7)
+        
+        # 6. Visita (Início CP + 15)
         visit_date = add_business_days(cp_start, visit_days)
+        
+        # 7. Pareceres Setoriais (Global)
         sectoral_date = calculate_deadline_rigorous(start_date, sectoral_days, suspensions)
         
         gantt_data = {
@@ -521,3 +536,4 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+
