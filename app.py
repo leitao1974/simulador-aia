@@ -140,12 +140,12 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     conf_date_real = None 
     
     for nome, dias in steps:
+        final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
+        
+        # Log apenas para a última etapa
         if dias == milestones_config["dia"]: 
-            # Gera log detalhado apenas para o prazo final
-            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
+            _, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
             log_final = log_data
-        else:
-            final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
             
         if nome == "Limite Conformidade":
             conf_date_real = final_date
@@ -421,11 +421,12 @@ with st.sidebar:
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, key="s150")
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True, key="d150")
         else:
-            # Defaults 90 dias (Conforme pedido: 20/75/80/60)
+            # Defaults 90 dias (Padrões Legais/Excel "Com Suspensão")
+            # 65 dias para PTF, 70 para Audiência, 60 para Setoriais, 20 para Conformidade
             d_reuniao = st.number_input("Reunião", value=9, key="r90")
             d_conf = st.number_input("Conformidade", value=20, key="c90")  
-            d_ptf = st.number_input("Envio PTF", value=75, key="p90")      
-            d_aud = st.number_input("Audiência", value=80, key="a90")      
+            d_ptf = st.number_input("Envio PTF", value=65, key="p90")      
+            d_aud = st.number_input("Audiência", value=70, key="a90")      
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90")
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
