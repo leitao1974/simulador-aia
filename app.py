@@ -25,7 +25,7 @@ except ImportError:
 # 2. DADOS DE BASE
 # ==========================================
 
-# FERIADOS (Incluindo Carnaval 2025 para precisão futura)
+# FERIADOS (Incluindo Carnaval 2025: 04/03/2025)
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
@@ -421,12 +421,11 @@ with st.sidebar:
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, key="s150")
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True, key="d150")
         else:
-            # Defaults 90 dias (Com Suspensão - Padrões do Excel)
-            # Definimos os defaults para bater certo com a simulação do Excel Reganazaré
+            # Defaults 90 dias (Conforme pedido: 20/75/80/60)
             d_reuniao = st.number_input("Reunião", value=9, key="r90")
             d_conf = st.number_input("Conformidade", value=20, key="c90")  
-            d_ptf = st.number_input("Envio PTF", value=65, key="p90")      # Ajustado para 65 (Excel)
-            d_aud = st.number_input("Audiência", value=70, key="a90")      # Ajustado para 70 (Excel)
+            d_ptf = st.number_input("Envio PTF", value=75, key="p90")      
+            d_aud = st.number_input("Audiência", value=80, key="a90")      
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90")
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
@@ -536,3 +535,4 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
+
