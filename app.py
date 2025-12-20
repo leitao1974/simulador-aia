@@ -25,17 +25,18 @@ except ImportError:
 # 2. DADOS DE BASE
 # ==========================================
 
-# Lista de Feriados (Atualizar anualmente se necessário)
+# ATUALIZAÇÃO CRÍTICA: Feriados + Carnaval 2025 para alinhar com contagem CCDR
 FERIADOS_STR = [
     '2023-10-05', '2023-11-01', '2023-12-01', '2023-12-08', '2023-12-25', 
     '2024-01-01', '2024-03-29', '2024-04-25', '2024-05-01', '2024-05-30', '2024-06-10', '2024-08-15', '2024-10-05', '2024-11-01', '2024-12-25', 
-    '2025-01-01', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15', '2025-12-01', '2025-12-08', '2025-12-25', 
-    '2026-01-01', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10', '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25', 
-    '2027-01-01', '2027-03-26', '2027-05-27', '2027-06-10', '2027-10-05', '2027-11-01', '2027-12-01', '2027-12-08', 
-    '2028-04-14', '2028-04-25', '2028-05-01', '2028-06-15', '2028-08-15', '2028-10-05', '2028-11-01', '2028-12-01', '2028-12-08', '2028-12-25', 
-    '2029-01-01', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
-    '2030-01-01', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
+    '2025-01-01', '2025-03-04', '2025-04-18', '2025-04-25', '2025-05-01', '2025-06-10', '2025-06-19', '2025-08-15', '2025-12-01', '2025-12-08', '2025-12-25', 
+    '2026-01-01', '2026-02-17', '2026-04-03', '2026-04-05', '2026-04-25', '2026-05-01', '2026-06-04', '2026-06-10', '2026-08-15', '2026-10-05', '2026-11-01', '2026-12-01', '2026-12-08', '2026-12-25', 
+    '2027-01-01', '2027-02-09', '2027-03-26', '2027-05-27', '2027-06-10', '2027-10-05', '2027-11-01', '2027-12-01', '2027-12-08', 
+    '2028-02-29', '2028-04-14', '2028-04-25', '2028-05-01', '2028-06-15', '2028-08-15', '2028-10-05', '2028-11-01', '2028-12-01', '2028-12-08', '2028-12-25', 
+    '2029-01-01', '2029-02-13', '2029-03-30', '2029-04-25', '2029-05-01', '2029-05-31', '2029-08-15', '2029-10-05', '2029-11-01', '2029-12-25', 
+    '2030-01-01', '2030-03-05', '2030-04-19', '2030-04-25', '2030-05-01', '2030-06-10', '2030-06-20', '2030-08-15', '2030-11-01', '2030-12-25'
 ]
+# Nota: Adicionado 2025-03-04 (Carnaval) que justifica a diferença de 1 dia em Março/Abril
 FERIADOS = {pd.to_datetime(d).date() for d in FERIADOS_STR}
 
 COMMON_LAWS = {
@@ -80,6 +81,7 @@ def add_business_days(start_date, num_days):
 
 def is_suspended(current_date, suspensions):
     for s in suspensions:
+        # Lógica inclusiva: se a data for igual ao início ou fim, conta como suspenso
         if s['start'] <= current_date <= s['end']:
             return True
     return False
@@ -92,14 +94,18 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
     if return_log:
         log.append({"Data": current_date, "Dia Contado": 0, "Status": "Início"})
 
+    # O loop continua enquanto não tivermos contado os dias úteis todos
     while days_counted < target_business_days:
         current_date += timedelta(days=1)
         
         status = "Util"
+        # 1. Verifica Suspensão primeiro
         if is_suspended(current_date, suspensions):
             status = "Suspenso"
+        # 2. Verifica Fim de Semana
         elif current_date.weekday() >= 5:
             status = "Fim de Semana"
+        # 3. Verifica Feriado
         elif current_date in FERIADOS:
             status = "Feriado"
             
@@ -111,7 +117,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
             
     final_date = current_date
     
-    # Ajuste CPA (se cair em fds/feriado, passa para o próximo útil)
+    # Ajuste CPA: Se o prazo terminar em Sábado/Domingo/Feriado, passa para o próximo útil
     while final_date.weekday() >= 5 or final_date in FERIADOS:
          final_date += timedelta(days=1)
     
@@ -123,8 +129,7 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     results = []
     log_final = []
     
-    # 1. Marcos Principais (Lista ordenada para tabela principal)
-    # Nota: Usamos os valores configurados na sidebar
+    # Marcos Principais definidos na Sidebar
     steps = [
         ("Data Reunião", milestones_config["reuniao"]),
         ("Limite Conformidade", milestones_config["conformidade"]),
@@ -136,8 +141,8 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     conf_date_real = None 
     
     for nome, dias in steps:
-        # Se for o último dia (DIA), geramos o log detalhado
         if dias == milestones_config["dia"]: 
+            # Gera log detalhado apenas para o prazo final
             final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
             log_final = log_data
         else:
@@ -152,35 +157,22 @@ def calculate_workflow(start_date, suspensions, milestones_config):
             "Data Prevista": final_date
         })
 
-    # 2. Marcos Complementares
+    # Marcos Complementares
     complementary = []
     gantt_data = {}
     
     if conf_date_real:
-        # Configurações vindas da sidebar
         cp_duration = milestones_config.get("cp_duration", 30)
         visit_days = milestones_config.get("visita", 15)
         sectoral_days = milestones_config.get("setoriais", 75)
 
-        # 1. Conformidade Teórica (sem suspensão, para referência)
+        # Cálculos de datas derivadas
         conf_date_theo = calculate_deadline_rigorous(start_date, milestones_config["conformidade"], [])
-        
-        # 2. Início CP: Até 5 dias úteis após Conformidade Real (com suspensão)
         cp_start = add_business_days(conf_date_real, 5)
-        
-        # 3. Fim CP: Duração configurável após Início CP
         cp_end = add_business_days(cp_start, cp_duration)
-        
-        # 4. Pareceres Externos: 3+20 (23 dias úteis) após INÍCIO da CP
         external_ops = add_business_days(cp_start, 23)
-        
-        # 5. Relatório CP: 7 dias úteis após Fim CP
         cp_report = add_business_days(cp_end, 7)
-        
-        # 6. Visita Técnica (X dias após início CP)
         visit_date = add_business_days(cp_start, visit_days)
-        
-        # 7. Pareceres Setoriais (Prazo global a contar do início)
         sectoral_date = calculate_deadline_rigorous(start_date, sectoral_days, suspensions)
         
         gantt_data = {
@@ -343,7 +335,6 @@ def create_pdf(project_name, typology, sector, regime, start_date, milestones, c
             end_dates.append(s['end'])
             colors.append('salmon')
             
-        # Adicionar Consulta Pública Explicitamente
         if gantt_data:
             tasks.append("Consulta Pública")
             start_dates.append(gantt_data['cp_start'])
@@ -407,41 +398,31 @@ with st.sidebar:
         format_func=lambda x: f"{x} Dias Úteis (AIA {'Geral' if x==150 else 'Simplificado/SIR'})"
     )
     
-    # DEFINIÇÕES AVANÇADAS (Prazos)
     with st.expander("⚙️ Definições Avançadas de Prazos", expanded=False):
-        st.caption("Valores ajustáveis em função do regime selecionado.")
-        
+        st.caption("Ajuste conforme Excel de referência se necessário.")
         if regime_option == 150:
-            # Defaults para 150 dias (AIA Geral)
             d_reuniao = st.number_input("Reunião", value=9)
             d_conf = st.number_input("Conformidade", value=30)
-            d_ptf = st.number_input("Envio PTF", value=85, help="Dia médio de envio")
+            d_ptf = st.number_input("Envio PTF", value=85)
             d_aud = st.number_input("Audiência", value=100)
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75)
             d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True)
         else:
-            # Defaults para 90 dias (AIA Simplex / SIR / PIN)
-            # Afinador com base no ficheiro excel fornecido (Reganazaré)
-            d_reuniao = st.number_input("Reunião", value=9, help="Referência Excel: 9 dias")
-            d_conf = st.number_input("Conformidade", value=20, help="Legal: 20 dias")
-            d_ptf = st.number_input("Envio PTF", value=65, help="Ajustado ao cronograma Simplex (Excel: 65 dias c/ suspensão)")
-            d_aud = st.number_input("Audiência", value=70, help="Ajustado ao cronograma Simplex (Excel: 70 dias)")
-            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, help="Referência Excel: 60 dias")
+            d_reuniao = st.number_input("Reunião", value=9)
+            d_conf = st.number_input("Conformidade", value=20)
+            d_ptf = st.number_input("Envio PTF", value=65, help="Ref: Dia 65 com suspensão")
+            d_aud = st.number_input("Audiência", value=70, help="Ref: Dia 70 com suspensão")
+            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60)
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True)
         
         st.markdown("**Prazos Complementares:**")
-        d_cp_duration = st.number_input("Duração Consulta Pública (dias)", value=30, help="Padrão: 30 dias")
-        d_visita = st.number_input("Dia da Visita (após Início CP)", value=15, help="3ª semana da CP")
+        d_cp_duration = st.number_input("Duração Consulta Pública (dias)", value=30)
+        d_visita = st.number_input("Dia da Visita (após Início CP)", value=15)
             
         milestones_config = {
-            "reuniao": d_reuniao, 
-            "conformidade": d_conf, 
-            "ptf": d_ptf,
-            "audiencia": d_aud, 
-            "dia": d_dia,
-            "visita": d_visita, 
-            "setoriais": d_setoriais, 
-            "cp_duration": d_cp_duration
+            "reuniao": d_reuniao, "conformidade": d_conf, "ptf": d_ptf,
+            "audiencia": d_aud, "dia": d_dia,
+            "visita": d_visita, "setoriais": d_setoriais, "cp_duration": d_cp_duration
         }
 
     st.markdown("---")
@@ -479,7 +460,6 @@ milestones, complementary, total_susp, log_dia, gantt_data = calculate_workflow(
 
 final_dia_date = milestones[-1]["Data Prevista"]
 
-# --- DASHBOARD ---
 st.divider()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Regime", f"{regime_option} Dias")
@@ -487,7 +467,6 @@ c2.metric("Início", start_date.strftime("%d/%m/%Y"))
 c3.metric("Suspensões", f"{total_susp} dias")
 c4.metric("Previsão DIA", final_dia_date.strftime("%d/%m/%Y"))
 
-# --- ABAS ---
 tab1, tab2, tab3, tab4 = st.tabs(["📋 Prazos Principais", "📑 Complementares", "📅 Gantt", "⚖️ Legislação"])
 
 with tab1:
@@ -498,16 +477,12 @@ with tab1:
     st.dataframe(df_main, use_container_width=True, hide_index=True)
 
 with tab2:
-    st.subheader("Prazos Complementares (Ordenados)")
     if complementary:
         df_comp = pd.DataFrame(complementary)
         df_comp["Data"] = pd.to_datetime(df_comp["Data"]).dt.strftime("%d-%m-%Y")
         st.dataframe(df_comp, use_container_width=True, hide_index=True)
-    else:
-        st.info("Prazos complementares indisponíveis.")
 
 with tab3:
-    # Gantt Plotly
     data_gantt = []
     last = start_date
     for m in milestones:
@@ -516,7 +491,6 @@ with tab3:
         data_gantt.append(dict(Task=m["Etapa"], Start=start, Finish=end, Resource="Fase Principal"))
         last = end
     
-    # Adicionar CP explicitamente com as datas calculadas
     if gantt_data:
         data_gantt.append(dict(Task="Consulta Pública", Start=gantt_data['cp_start'], Finish=gantt_data['cp_end'], Resource="Consulta Pública"))
         
@@ -530,9 +504,7 @@ with tab3:
 with tab4:
     st.write("**Transversal:**")
     for k, v in COMMON_LAWS.items(): st.markdown(f"- [{k}]({v})")
-    st.write(f"**Específica ({selected_sector}):**")
-    for k, v in SPECIFIC_LAWS.get(selected_sector, {}).items(): st.markdown(f"- [{k}]({v})")
-
+    
 st.markdown("---")
 if st.button("Gerar Relatório PDF"):
     pdf_bytes = create_pdf(
@@ -549,4 +521,3 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
-
