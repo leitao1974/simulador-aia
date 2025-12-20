@@ -147,9 +147,6 @@ def calculate_workflow(start_date, suspensions, milestones_config):
         else:
             final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
             
-        # Removemos qualquer lógica forçada de offset.
-        # O cálculo é puro: Dia X + Suspensões.
-        
         if nome == "Limite Conformidade":
             conf_date_real = final_date
             
@@ -413,25 +410,24 @@ with st.sidebar:
     )
     
     with st.expander("⚙️ Definições Avançadas de Prazos", expanded=False):
-        st.caption("Ajuste conforme Excel de referência se necessário.")
+        st.caption("Os valores ajustam-se automaticamente ao Regime, mas podem ser editados.")
+        
+        # Uso de chaves (keys) dinâmicas para forçar a atualização dos valores default ao trocar de regime
         if regime_option == 150:
-            d_reuniao = st.number_input("Reunião", value=9)
-            d_conf = st.number_input("Conformidade", value=30)
-            d_ptf = st.number_input("Envio PTF", value=85)
-            d_aud = st.number_input("Audiência", value=100)
-            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75)
-            d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True)
+            d_reuniao = st.number_input("Reunião", value=9, key="r150")
+            d_conf = st.number_input("Conformidade", value=30, key="c150")
+            d_ptf = st.number_input("Envio PTF", value=85, key="p150")
+            d_aud = st.number_input("Audiência", value=100, key="a150")
+            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=75, key="s150")
+            d_dia = st.number_input("Decisão Final (DIA)", value=150, disabled=True, key="d150")
         else:
-            # Defaults ajustados conforme Excel (Valores em Azul)
-            d_reuniao = st.number_input("Reunião", value=9)
-            d_conf = st.number_input("Conformidade", value=20)
-            # Excel: "Data de envio do PTF à AAIA (65 dias)"
-            d_ptf = st.number_input("Envio PTF", value=65)
-            # Excel: "Audiência de interessados (70 dias)"
-            d_aud = st.number_input("Audiência", value=70)
-            # Excel: "Data limite Pareceres Sectoriais (no dia 60)"
-            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60)
-            d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True)
+            # Defaults do Excel (Valores a Azul / Simplex)
+            d_reuniao = st.number_input("Reunião", value=9, key="r90")
+            d_conf = st.number_input("Conformidade", value=20, key="c90") # Excel (20 dias)
+            d_ptf = st.number_input("Envio PTF", value=65, key="p90")     # Excel (65 dias)
+            d_aud = st.number_input("Audiência", value=70, key="a90")     # Excel (70 dias)
+            d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90") # Excel (60 dias)
+            d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
         st.markdown("**Prazos Complementares:**")
         d_cp_duration = st.number_input("Duração Consulta Pública (dias)", value=30)
@@ -539,4 +535,3 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
-
