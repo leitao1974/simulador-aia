@@ -535,4 +535,3 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
-
