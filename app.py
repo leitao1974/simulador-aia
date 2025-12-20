@@ -124,7 +124,7 @@ def calculate_deadline_rigorous(start_date, target_business_days, suspensions, r
         return final_date, log
     return final_date
 
-def calculate_workflow(start_date, suspensions, milestones_config):
+def calculate_workflow(start_date, suspensions, milestones_config, pea_date=None):
     results = []
     log_final = []
     
@@ -140,15 +140,40 @@ def calculate_workflow(start_date, suspensions, milestones_config):
     conf_date_real = None 
     
     for nome, dias in steps:
-        if dias == milestones_config["dia"]: 
-            # Gera log detalhado apenas para o prazo final
-            final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
-            log_final = log_data
-        else:
-            final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
+        final_date = None
+        
+        # --- LÓGICA ESPECIAL PARA CONFORMIDADE COM PEA ---
+        if nome == "Limite Conformidade" and pea_date and suspensions:
+            # 1. Contar dias úteis até ao PEA
+            days_until_pea = 0
+            temp_date = start_date
+            while temp_date < pea_date:
+                temp_date += timedelta(days=1)
+                if is_business_day(temp_date): # Ignora suspensões aqui, assume que PEA é a causa
+                    days_until_pea += 1
             
-        if nome == "Limite Conformidade":
+            # 2. Dias restantes
+            remaining_days = dias - days_until_pea
+            if remaining_days < 0: remaining_days = 0
+            
+            # 3. Encontrar o fim da suspensão (Assumimos a última data de suspensão registada)
+            last_susp_end = max([s['end'] for s in suspensions])
+            
+            # 4. Somar os dias restantes a partir do fim da suspensão
+            final_date = add_business_days(last_susp_end, remaining_days)
+            
             conf_date_real = final_date
+            
+        else:
+            # Cálculo Normal
+            if dias == milestones_config["dia"]: 
+                final_date, log_data = calculate_deadline_rigorous(start_date, dias, suspensions, return_log=True)
+                log_final = log_data
+            else:
+                final_date = calculate_deadline_rigorous(start_date, dias, suspensions)
+                
+            if nome == "Limite Conformidade":
+                conf_date_real = final_date
             
         results.append({
             "Etapa": nome, 
@@ -424,14 +449,17 @@ with st.sidebar:
             # Defaults 90 dias (Padrões Legais/Excel "Normal")
             d_reuniao = st.number_input("Reunião", value=9, key="r90")
             d_conf = st.number_input("Conformidade", value=20, key="c90")  # (20 dias)
-            d_ptf = st.number_input("Envio PTF", value=65, key="p90")      # (65 dias)
-            d_aud = st.number_input("Audiência", value=70, key="a90")      # (70 dias)
+            d_ptf = st.number_input("Envio PTF", value=75, key="p90")      # (75 dias)
+            d_aud = st.number_input("Audiência", value=80, key="a90")      # (80 dias)
             d_setoriais = st.number_input("Pareceres Setoriais (Dia Global)", value=60, key="s90") # (60 dias)
             d_dia = st.number_input("Decisão Final (DIA)", value=90, disabled=True, key="d90")
         
         st.markdown("**Prazos Complementares:**")
         d_cp_duration = st.number_input("Duração Consulta Pública (dias)", value=30)
         d_visita = st.number_input("Dia da Visita (após Início CP)", value=15)
+        
+        st.markdown("**Suspensão Específica:**")
+        pea_date = st.date_input("Data do PEA (se aplicável)", value=None, help="Preencha se houve Pedido de Elementos Adicionais na fase de Conformidade")
             
         milestones_config = {
             "reuniao": d_reuniao, "conformidade": d_conf, "ptf": d_ptf,
@@ -469,7 +497,8 @@ with st.sidebar:
 milestones, complementary, total_susp, log_dia, gantt_data = calculate_workflow(
     start_date, 
     st.session_state.suspensions_universal, 
-    milestones_config
+    milestones_config,
+    pea_date=pea_date
 )
 
 final_dia_date = milestones[-1]["Data Prevista"]
@@ -535,4 +564,3 @@ if st.button("Gerar Relatório PDF"):
     )
     if pdf_bytes:
         st.download_button("Descarregar PDF", pdf_bytes, "relatorio_aia.pdf", "application/pdf")
-
